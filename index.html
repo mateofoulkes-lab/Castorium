@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Castorium</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="game"></div>
+
+  <header class="hud topbar">
+    <div><strong>CASTORIUM</strong> <span id="dayLabel">Día 1 · Mañana</span></div>
+    <div class="money">🌿 <span id="moneyLabel">50.000</span></div>
+    <div class="time-controls">
+      <button data-speed="0">⏸</button>
+      <button data-speed="1" class="active">▶</button>
+      <button data-speed="2">▶▶</button>
+      <button data-speed="4">▶▶▶</button>
+    </div>
+  </header>
+
+  <aside class="hud tutorial" id="tutorialPanel">
+    <strong id="tutorialTitle">Primer día en Castorium</strong>
+    <p id="tutorialText"></p>
+    <button id="tutorialAction" hidden></button>
+  </aside>
+
+  <aside class="hud selection" id="selectionPanel">
+    <strong id="selectionTitle">Galpón vacío</strong>
+    <p id="selectionBody">Hacé click sobre una zona u objeto del galpón.</p>
+    <div id="selectionActions" class="action-list"></div>
+  </aside>
+
+  <aside class="hud log-panel">
+    <strong>Eventos</strong>
+    <div id="eventLog"></div>
+  </aside>
+
+  <div class="hint" id="hint">Arrastrá para rotar · rueda para zoom · click para interactuar</div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
