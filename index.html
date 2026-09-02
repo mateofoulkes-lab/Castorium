@@ -24,14 +24,20 @@
     <section class="panel">
       <h2>Compras</h2>
       <button id="buyLogs">🚚 Comprar 5 troncos · 1.000 🌿</button>
-      <button id="buyCutLine">🪚 Comprar línea de corte · 12.000 🌿</button>
+      <button id="buyCutLine">🪚 Comprar línea de corte · 35.000 🌿</button>
       <button id="buyPackLine">📦 Comprar línea de embalaje · 8.000 🌿</button>
+    </section>
+
+    <section class="panel">
+      <h2>Personal</h2>
+      <p class="muted">Cada contratación elimina una tarea manual concreta. Los sueldos se pagan cada 30 días.</p>
+      <div id="workers" class="worker-grid"></div>
     </section>
 
     <section class="panel">
       <h2>Galpón</h2>
       <div class="flow">
-        <div class="zone dropzone" data-drop="incoming">
+        <div class="zone">
           <h3>🚚 Recepción</h3>
           <div id="incoming"></div>
         </div>
@@ -53,7 +59,7 @@
 
         <div class="zone wide">
           <h3>📦 Líneas de embalaje</h3>
-          <div id="packLines" class="slots"></div>
+          <div id="packLines" class="slots pack-slots"></div>
         </div>
 
         <div class="zone dropzone" data-drop="finishedYard">
@@ -81,7 +87,6 @@
         <button disabled>📋 Despachantes</button>
         <button disabled>⛑️ Seguridad e Higiene</button>
         <button disabled>💡 Ingeniería y Desarrollo</button>
-        <button disabled>🦫 Personal</button>
       </div>
     </section>
 
