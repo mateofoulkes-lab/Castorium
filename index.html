@@ -26,11 +26,12 @@
       <button id="buyLogs">🚚 Comprar 5 troncos · 1.000 🌿</button>
       <button id="buyCutLine">🪚 Comprar línea de corte · 35.000 🌿</button>
       <button id="buyPackLine">📦 Comprar línea de embalaje · 8.000 🌿</button>
+      <button id="buyArtisanLine">🪵 Comprar línea artesanal · 18.000 🌿</button>
     </section>
 
     <section class="panel">
       <h2>Personal</h2>
-      <p class="muted">Cada contratación elimina una tarea manual concreta. Los sueldos se pagan cada 30 días.</p>
+      <p class="muted">Las contrataciones automatizan tareas. Máximo: 4 autoelevadoristas. Los sueldos se pagan cada 30 días.</p>
       <div id="workers" class="worker-grid"></div>
     </section>
 
@@ -58,6 +59,16 @@
         </div>
 
         <div class="zone wide">
+          <h3>🧰 Línea artesanal</h3>
+          <div id="artisanLine"></div>
+        </div>
+
+        <div class="zone dropzone" data-drop="artisanYard">
+          <h3>✨ Depósito artesanal</h3>
+          <div id="artisanYard"></div>
+        </div>
+
+        <div class="zone wide">
           <h3>📦 Líneas de embalaje</h3>
           <div id="packLines" class="slots pack-slots"></div>
         </div>
@@ -77,12 +88,18 @@
     <section class="panel">
       <h2>Pedido actual</h2>
       <div id="order"></div>
+      <div id="qualityPrices"></div>
+    </section>
+
+    <section class="panel">
+      <h2>🔧 Mantenimiento</h2>
+      <p class="muted">Las líneas se desgastan con el uso. Una línea en mal estado produce peor calidad y puede romperse.</p>
+      <div id="maintenance"></div>
     </section>
 
     <section class="panel">
       <h2>Futuros sectores</h2>
       <div class="future-grid">
-        <button disabled>🔧 Mantenimiento</button>
         <button disabled>👔 Supervisor</button>
         <button disabled>📋 Despachantes</button>
         <button disabled>⛑️ Seguridad e Higiene</button>
