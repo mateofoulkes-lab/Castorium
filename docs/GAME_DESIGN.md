@@ -127,6 +127,39 @@ Fixed production/support spaces:
 
 Additional spaces should only be added when they unlock a fun system, not for architectural completeness.
 
+## Economy pacing
+
+The first cutting line must consume most of the starting capital so the second line is a genuine production milestone instead of an opening purchase.
+
+Current prototype values:
+
+- starting capital: 50,000 Ramitas;
+- cutting line: 35,000;
+- packaging line: 8,000;
+- truck of 5 logs: 1,000.
+
+This leaves enough room to establish one complete production chain, but not to immediately buy a second cutting line.
+
+## Machine upgrades
+
+Machine upgrades belong to the individual machine, not to one giant global technology menu.
+
+Each installed line has its own **Upgrades** menu. Two nominally identical machines can therefore evolve differently over a long game.
+
+Early cutting-line upgrades:
+
+- faster cutting rhythm;
+- larger output accumulator so one finished stack does not immediately block production.
+
+Early packaging-line upgrades:
+
+- larger input queue, allowing multiple cut stacks to wait on the line and be processed consecutively;
+- larger finished-output accumulator.
+
+Costs increase by level. A heavily upgraded old line should feel materially more valuable than a newly installed stock machine.
+
+Later Engineering & Development can discover additional upgrade families instead of exposing everything at game start.
+
 ## Sandbox progression
 
 There is no final campaign victory condition.
@@ -199,6 +232,15 @@ First automation targets:
 6. supervisor for reassignment and repetitive administration.
 
 The first workers should create dramatic quality-of-life improvements rather than tiny efficiency bonuses.
+
+Current prototype first hires:
+
+- Tito Álamo — crane operator: unloads incoming trucks and feeds empty cutting lines;
+- Nora Viruta — cutting operator: runs loaded cutting lines;
+- Beto Incisivo — forklift operator: moves cut stacks, feeds packaging, clears finished outputs and loads dispatch;
+- Marta Serrucho — packaging operator: performs packaging steps automatically.
+
+Workers currently have a hiring cost and a simple recurring monthly salary. Rich aptitudes and traits come later.
 
 ## Future machine problems
 
