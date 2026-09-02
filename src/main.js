@@ -6,19 +6,36 @@ const CONFIG = {
   cutsPerLog: 80,
   cuttingLineCost: 35000,
   packagingLineCost: 8000,
-  packageSalePrice: 700,
+  artisanLineCost: 18000,
   cuttingSlots: 3,
   packagingSlots: 2,
   packagingSteps: ["Envolver", "Cantoneras", "Zunchar", "Etiquetar", "Liberar"],
   payrollEveryDays: 30,
   automationMs: 700,
+  wearPerCut: 0.18,
+  wearPerPackStep: 0.08,
+  manualRepair: 4,
+  maintenanceRepair: 8,
+};
+
+const QUALITY = {
+  scrap: { name: "Chatarra", icon: "🗑️", price: 120, rank: 0 },
+  third: { name: "Tercera", icon: "🥉", price: 420, rank: 1 },
+  second: { name: "Segunda", icon: "🥈", price: 700, rank: 2 },
+  first: { name: "Primera", icon: "🥇", price: 1050, rank: 3 },
+  premium: { name: "Premium", icon: "💎", price: 1650, rank: 4 },
 };
 
 const WORKER_CATALOG = [
-  { role: "crane", icon: "🏗️", name: "Tito Álamo", title: "Gruero", hire: 3500, salary: 900, desc: "Descarga camiones y alimenta líneas de corte vacías." },
-  { role: "cutter", icon: "🪚", name: "Nora Viruta", title: "Operadora de corte", hire: 4500, salary: 1100, desc: "Opera automáticamente las líneas de corte cargadas." },
-  { role: "forklift", icon: "🚜", name: "Beto Incisivo", title: "Autoelevadorista", hire: 5000, salary: 1200, desc: "Mueve pilas y paquetes por el galpón según prioridad." },
-  { role: "packer", icon: "📦", name: "Marta Serrucho", title: "Embaladora", hire: 4500, salary: 1050, desc: "Hace automáticamente los pasos de embalaje." },
+  { id: "crane-1", role: "crane", icon: "🏗️", name: "Tito Álamo", title: "Gruero", hire: 3500, salary: 900, skill: 66, max: 1, desc: "Descarga camiones y alimenta líneas de corte vacías." },
+  { id: "cutter-1", role: "cutter", icon: "🪚", name: "Nora Viruta", title: "Operadora de corte", hire: 4500, salary: 1100, skill: 70, max: 1, desc: "Opera automáticamente las líneas de corte. Su capacidad influye en la calidad." },
+  { id: "forklift-1", role: "forklift", icon: "🚜", name: "Beto Incisivo", title: "Autoelevadorista", hire: 5000, salary: 1200, skill: 68, max: 4, desc: "Mueve pilas y paquetes por el galpón según prioridad." },
+  { id: "forklift-2", role: "forklift", icon: "🚜", name: "Lidia Paleta", title: "Autoelevadorista", hire: 5300, salary: 1250, skill: 72, max: 4, desc: "Segundo autoelevadorista para aumentar el movimiento interno." },
+  { id: "forklift-3", role: "forklift", icon: "🚜", name: "René Roedor", title: "Autoelevadorista", hire: 5600, salary: 1300, skill: 76, max: 4, desc: "Tercer autoelevadorista para una planta más cargada." },
+  { id: "forklift-4", role: "forklift", icon: "🚜", name: "Cacho Quebracho", title: "Autoelevadorista", hire: 6000, salary: 1400, skill: 82, max: 4, desc: "Cuarto y último autoelevadorista permitido en el galpón." },
+  { id: "packer-1", role: "packer", icon: "📦", name: "Marta Serrucho", title: "Embaladora", hire: 4500, salary: 1050, skill: 72, max: 1, desc: "Hace automáticamente los pasos de embalaje." },
+  { id: "maintenance-1", role: "maintenance", icon: "🔧", name: "Rubén Rodamiento", title: "Guardia de mantenimiento", hire: 6500, salary: 1500, skill: 76, max: 1, desc: "Repara líneas dañadas y evita que trabajen demasiado tiempo en mal estado." },
+  { id: "classifier-1", role: "classifier", icon: "🧐", name: "Elsa Nogal", title: "Clasificadora artesanal", hire: 7500, salary: 1600, skill: 68, max: 1, desc: "Prioriza pilas de peor calidad y las mejora en la línea artesanal." },
 ];
 
 let nextId = 1;
@@ -34,37 +51,49 @@ const state = {
   rawYard: [],
   cuttingLines: Array.from({ length: CONFIG.cuttingSlots }, () => null),
   cutBuffer: [],
+  artisanLine: null,
+  artisanYard: [],
   packagingLines: Array.from({ length: CONFIG.packagingSlots }, () => null),
   finishedYard: [],
   order: createOrder(3),
   dispatchTruck: [],
   completedOrders: 0,
   workers: {},
+  classifierLevel: 1,
   lastPayrollDay: 1,
   log: [],
 };
 
 function createOrder(quantity = randomInt(3, 7)) {
-  return { id: uid("order"), quantity, reward: quantity * CONFIG.packageSalePrice };
+  return { id: uid("order"), quantity };
 }
 function createLog() { return { id: uid("log"), type: "log", cutsRemaining: CONFIG.cutsPerLog }; }
-function createCutStack() { return { id: uid("stack"), type: "stack" }; }
-function createFinishedPackage() { return { id: uid("package"), type: "package" }; }
+function createCutStack(quality) { return { id: uid("stack"), type: "stack", quality }; }
+function createFinishedPackage(quality) { return { id: uid("package"), type: "package", quality }; }
 function newCuttingLine(slot) {
-  return { id: uid("cutline"), slot, input: null, cutProgress: 0, outputs: [], upgrades: { speed: 0, output: 0 }, upgradeOpen: false };
+  return { id: uid("cutline"), slot, input: null, cutProgress: 0, outputs: [], health: 100, broken: false, upgrades: { speed: 0, output: 0 }, upgradeOpen: false };
 }
 function newPackagingLine(slot) {
-  return { id: uid("packline"), slot, queue: [], step: 0, outputs: [], upgrades: { queue: 0, output: 0 }, upgradeOpen: false };
+  return { id: uid("packline"), slot, queue: [], step: 0, outputs: [], health: 100, broken: false, upgrades: { capacity: 0 }, upgradeOpen: false };
+}
+function newArtisanLine() {
+  return { id: uid("artisan"), input: null, progress: 0, output: null };
 }
 
 function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-function formatMoney(value) { return new Intl.NumberFormat("es-AR").format(value); }
-function worker(role) { return state.workers[role] ?? null; }
-function hasWorker(role) { return Boolean(worker(role)); }
+function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+function formatMoney(value) { return new Intl.NumberFormat("es-AR").format(Math.round(value)); }
+function hiredWorkers() { return Object.values(state.workers); }
+function workerCount(role) { return hiredWorkers().filter((w) => w.role === role).length; }
+function hasWorker(role) { return workerCount(role) > 0; }
+function bestWorker(role) { return hiredWorkers().filter((w) => w.role === role).sort((a, b) => b.skill - a.skill)[0] ?? null; }
+function isHired(id) { return Boolean(state.workers[id]); }
 function cutOutputCapacity(line) { return 1 + line.upgrades.output; }
-function packQueueCapacity(line) { return 1 + line.upgrades.queue; }
-function packOutputCapacity(line) { return 1 + line.upgrades.output; }
+function packCapacity(line) { return 1 + line.upgrades.capacity; }
 function cutInterval(line) { return Math.max(90, 260 - line.upgrades.speed * 55); }
+function qMeta(key) { return QUALITY[key] ?? QUALITY.third; }
+function qLabel(key) { const q = qMeta(key); return `${q.icon} ${q.name}`; }
+function itemValue(item) { return qMeta(item.quality).price; }
 
 function timeLabel() {
   const hour = Math.floor(state.minute / 60) % 24;
@@ -75,7 +104,7 @@ function timeLabel() {
 function addLog(message) {
   const stamp = timeLabel().split(" · ").at(-1);
   state.log.unshift(`${stamp} — ${message}`);
-  state.log = state.log.slice(0, 60);
+  state.log = state.log.slice(0, 80);
 }
 function setBoss(text) { state.boss = text; }
 function spend(amount) {
@@ -107,13 +136,31 @@ function buyPackagingLine() {
   addLog(`📦 Línea de embalaje instalada en espacio ${slot + 1}.`);
   render();
 }
+function buyArtisanLine() {
+  if (state.artisanLine) return;
+  if (!spend(CONFIG.artisanLineCost)) return addLog("⚠ No alcanzan las ramitas."), render();
+  state.artisanLine = newArtisanLine();
+  addLog("🧰 Línea de troncos artesanales instalada.");
+  render();
+}
 
-function hire(role) {
-  const candidate = WORKER_CATALOG.find((x) => x.role === role);
-  if (!candidate || hasWorker(role)) return;
+function hire(id) {
+  const candidate = WORKER_CATALOG.find((x) => x.id === id);
+  if (!candidate || isHired(id)) return;
+  if (workerCount(candidate.role) >= candidate.max) return addLog("⚠ Ya alcanzaste el máximo para ese puesto."), render();
   if (!spend(candidate.hire)) return addLog("⚠ No alcanzan las ramitas para contratar."), render();
-  state.workers[role] = { ...candidate, hiredDay: state.day };
+  state.workers[id] = { ...candidate, hiredDay: state.day };
   addLog(`${candidate.icon} ${candidate.name} fue contratado como ${candidate.title}.`);
+  render();
+}
+function trainClassifier() {
+  if (!hasWorker("classifier") || state.classifierLevel >= 2) return;
+  const cost = 9000;
+  if (!spend(cost)) return addLog("⚠ No alcanzan las ramitas para capacitar al personal."), render();
+  state.classifierLevel = 2;
+  const w = bestWorker("classifier");
+  if (w) w.skill += 12;
+  addLog("🎓 Clasificación avanzada desbloqueada: Primera → Premium.");
   render();
 }
 
@@ -121,8 +168,7 @@ function upgradeCost(kind, level) {
   const table = {
     cutSpeed: [1800, 4200, 9000],
     cutOutput: [2500, 6000],
-    packQueue: [1600, 3800, 7500],
-    packOutput: [2200, 5200],
+    packCapacity: [2600, 6200, 12500],
   };
   return table[kind]?.[level] ?? null;
 }
@@ -137,28 +183,47 @@ function buyCutUpgrade(index, kind) {
   addLog(`⚙️ Línea ${index + 1}: mejora comprada (${kind === "cutSpeed" ? "ritmo de corte" : "salida acumulable"}).`);
   render();
 }
-function buyPackUpgrade(index, kind) {
+function buyPackUpgrade(index) {
   const line = state.packagingLines[index];
   if (!line) return;
-  const key = kind === "packQueue" ? "queue" : "output";
-  const cost = upgradeCost(kind, line.upgrades[key]);
+  const cost = upgradeCost("packCapacity", line.upgrades.capacity);
   if (cost == null) return;
   if (!spend(cost)) return addLog("⚠ No alcanzan las ramitas para esa mejora."), render();
-  line.upgrades[key] += 1;
-  addLog(`⚙️ Embalaje ${index + 1}: mejora comprada (${kind === "packQueue" ? "cola de entrada" : "salida acumulable"}).`);
+  line.upgrades.capacity += 1;
+  addLog(`⚙️ Embalaje ${index + 1}: capacidad de línea aumentada a ${packCapacity(line)} entrada / ${packCapacity(line)} salida.`);
   render();
 }
 
+function qualityFromCut(line, skill) {
+  const score = line.health * 0.62 + skill * 0.38 + randomInt(-18, 18);
+  if (score < 35) return "scrap";
+  if (score < 55) return "third";
+  if (score < 73) return "second";
+  return "first";
+}
+function degradeLine(line, amount) {
+  line.health = clamp(line.health - amount, 0, 100);
+  if (!line.broken && line.health < 38) {
+    const chance = (38 - line.health) / 300;
+    if (Math.random() < chance) {
+      line.broken = true;
+      addLog("💥 Una línea se rompió y quedó fuera de servicio.");
+    }
+  }
+}
 function cutOnce(lineIndex, automated = false) {
   const line = state.cuttingLines[lineIndex];
-  if (!line?.input || line.outputs.length >= cutOutputCapacity(line)) return false;
+  if (!line?.input || line.broken || line.outputs.length >= cutOutputCapacity(line)) return false;
   if (!automated) setBoss(`operando corte ${lineIndex + 1}`);
   line.cutProgress += 1;
   line.input.cutsRemaining -= 1;
+  degradeLine(line, CONFIG.wearPerCut);
   if (line.cutProgress >= CONFIG.cutsPerStack) {
     line.cutProgress = 0;
-    line.outputs.push(createCutStack());
-    addLog(`🟫 Línea ${lineIndex + 1} produjo una pila (${line.outputs.length}/${cutOutputCapacity(line)} en salida).`);
+    const operatorSkill = automated && bestWorker("cutter") ? bestWorker("cutter").skill : 58;
+    const quality = qualityFromCut(line, operatorSkill);
+    line.outputs.push(createCutStack(quality));
+    addLog(`🟫 Línea ${lineIndex + 1} produjo una pila ${qLabel(quality)}.`);
   }
   if (line.input?.cutsRemaining <= 0) {
     addLog(`🪵 Tronco agotado en línea ${lineIndex + 1}.`);
@@ -170,18 +235,60 @@ function cutOnce(lineIndex, automated = false) {
 
 function packagingStep(lineIndex, automated = false) {
   const line = state.packagingLines[lineIndex];
-  if (!line || line.queue.length === 0 || line.outputs.length >= packOutputCapacity(line)) return false;
+  if (!line || line.broken || line.queue.length === 0 || line.outputs.length >= packCapacity(line)) return false;
   if (!automated) setBoss(`embalando en línea ${lineIndex + 1}`);
   const action = CONFIG.packagingSteps[line.step];
   if (!automated) addLog(`📦 ${action} — línea de embalaje ${lineIndex + 1}.`);
   line.step += 1;
+  degradeLine(line, CONFIG.wearPerPackStep);
   if (line.step >= CONFIG.packagingSteps.length) {
-    line.outputs.push(createFinishedPackage());
-    line.queue.shift();
+    const stack = line.queue.shift();
+    line.outputs.push(createFinishedPackage(stack.quality));
     line.step = 0;
-    addLog(`✅ Paquete terminado en línea de embalaje ${lineIndex + 1}.`);
+    addLog(`✅ Paquete ${qLabel(stack.quality)} terminado en embalaje ${lineIndex + 1}.`);
   }
   if (!automated) render();
+  return true;
+}
+
+function nextQuality(quality) {
+  if (quality === "third") return "second";
+  if (quality === "second") return "first";
+  if (quality === "first" && state.classifierLevel >= 2) return "premium";
+  return null;
+}
+function artisanStep(automated = false) {
+  const line = state.artisanLine;
+  if (!line?.input || line.output) return false;
+  const next = nextQuality(line.input.quality);
+  if (!next) return false;
+  if (!automated) setBoss("reapilando en línea artesanal");
+  line.progress += 1;
+  if (line.progress >= 10) {
+    const item = line.input;
+    item.quality = next;
+    line.input = null;
+    line.progress = 0;
+    line.output = item;
+    addLog(`✨ Línea artesanal mejoró una pila a ${qLabel(next)}.`);
+  }
+  if (!automated) render();
+  return true;
+}
+
+function repairLine(kind, index, automated = false) {
+  const line = kind === "cut" ? state.cuttingLines[index] : state.packagingLines[index];
+  if (!line || line.health >= 100) return false;
+  const amount = automated ? CONFIG.maintenanceRepair : CONFIG.manualRepair;
+  line.health = clamp(line.health + amount, 0, 100);
+  if (line.health >= 45 && line.broken) {
+    line.broken = false;
+    addLog(`🔧 ${kind === "cut" ? "Línea de corte" : "Embalaje"} ${index + 1} volvió a servicio.`);
+  }
+  if (!automated) {
+    setBoss(`reparando ${kind === "cut" ? "línea" : "embalaje"} ${index + 1}`);
+    render();
+  }
   return true;
 }
 
@@ -190,10 +297,11 @@ function dispatchOrder() {
     addLog(`⚠ El camión necesita ${state.order.quantity - state.dispatchTruck.length} paquete(s) más.`);
     return render();
   }
-  state.money += state.order.reward;
-  state.dispatchTruck.splice(0, state.order.quantity);
+  const sold = state.dispatchTruck.splice(0, state.order.quantity);
+  const revenue = sold.reduce((sum, item) => sum + itemValue(item), 0);
+  state.money += revenue;
   state.completedOrders += 1;
-  addLog(`🚛 Pedido despachado. +${formatMoney(state.order.reward)} 🌿.`);
+  addLog(`🚛 Pedido despachado. +${formatMoney(revenue)} 🌿 según calidad.`);
   state.order = createOrder();
   setBoss("libre");
   render();
@@ -203,7 +311,10 @@ function findItem(source, id) {
   if (source === "incoming") return state.incomingTruck?.logs.find((x) => x.id === id) ?? null;
   if (source === "rawYard") return state.rawYard.find((x) => x.id === id) ?? null;
   if (source === "cutBuffer") return state.cutBuffer.find((x) => x.id === id) ?? null;
+  if (source === "artisanYard") return state.artisanYard.find((x) => x.id === id) ?? null;
   if (source === "finishedYard") return state.finishedYard.find((x) => x.id === id) ?? null;
+  if (source === "artisanLine:input") return state.artisanLine?.input?.id === id ? state.artisanLine.input : null;
+  if (source === "artisanLine:output") return state.artisanLine?.output?.id === id ? state.artisanLine.output : null;
   const [kind, indexText, part] = source.split(":");
   const index = Number(indexText);
   if (kind === "cutLine") {
@@ -233,7 +344,10 @@ function removeItem(source, id) {
   }
   if (source === "rawYard") return removeArrayItem(state.rawYard, id);
   if (source === "cutBuffer") return removeArrayItem(state.cutBuffer, id);
+  if (source === "artisanYard") return removeArrayItem(state.artisanYard, id);
   if (source === "finishedYard") return removeArrayItem(state.finishedYard, id);
+  if (source === "artisanLine:input") { const x = state.artisanLine.input; state.artisanLine.input = null; state.artisanLine.progress = 0; return x; }
+  if (source === "artisanLine:output") { const x = state.artisanLine.output; state.artisanLine.output = null; return x; }
   const [kind, indexText, part] = source.split(":");
   const index = Number(indexText);
   if (kind === "cutLine") {
@@ -247,26 +361,35 @@ function removeItem(source, id) {
   }
   return null;
 }
+function canImproveQuality(q) {
+  if (q === "third" || q === "second") return true;
+  if (q === "first" && state.classifierLevel >= 2) return true;
+  return false;
+}
 function canDrop(item, target) {
   if (!item) return false;
   if (target === "rawYard") return item.type === "log";
   if (target === "cutBuffer") return item.type === "stack";
+  if (target === "artisanYard") return item.type === "stack";
   if (target === "finishedYard") return item.type === "package";
   if (target === "dispatchTruck") return item.type === "package" && state.dispatchTruck.length < state.order.quantity;
+  if (target === "artisanLine") return item.type === "stack" && state.artisanLine && !state.artisanLine.input && canImproveQuality(item.quality);
   const [kind, indexText] = target.split(":");
   const index = Number(indexText);
   if (kind === "cutLine") return item.type === "log" && state.cuttingLines[index] && !state.cuttingLines[index].input;
   if (kind === "packLine") {
     const line = state.packagingLines[index];
-    return item.type === "stack" && line && line.queue.length < packQueueCapacity(line);
+    return item.type === "stack" && line && line.queue.length < packCapacity(line);
   }
   return false;
 }
 function placeItem(item, target) {
   if (target === "rawYard") state.rawYard.push(item);
   else if (target === "cutBuffer") state.cutBuffer.push(item);
+  else if (target === "artisanYard") state.artisanYard.push(item);
   else if (target === "finishedYard") state.finishedYard.push(item);
   else if (target === "dispatchTruck") state.dispatchTruck.push(item);
+  else if (target === "artisanLine") state.artisanLine.input = item;
   else {
     const [kind, indexText] = target.split(":");
     const index = Number(indexText);
@@ -278,9 +401,10 @@ function describeMove(item, target) {
   if (item.type === "log" && target === "rawYard") return "🏗️ Jefe descargó un tronco en la playa.";
   if (item.type === "log" && target.startsWith("cutLine")) return "🏗️ Jefe cargó un tronco en una línea de corte.";
   if (item.type === "stack" && target === "cutBuffer") return "🚜 Jefe llevó una pila a la playa intermedia.";
-  if (item.type === "stack" && target.startsWith("packLine")) return "🚜 Jefe llevó una pila a embalaje.";
+  if (item.type === "stack" && target === "artisanLine") return "🚜 Jefe llevó una pila a la línea artesanal.";
+  if (item.type === "stack" && target.startsWith("packLine")) return "🚜 Jefe llevó una pila directamente a embalaje.";
   if (item.type === "package" && target === "finishedYard") return "🚜 Jefe llevó un paquete a la playa de salida.";
-  if (item.type === "package" && target === "dispatchTruck") return "🚜 Jefe cargó un paquete al camión de despacho.";
+  if (item.type === "package" && target === "dispatchTruck") return "🚜 Jefe llevó un paquete directamente al camión.";
   return "🦫 Movimiento completado.";
 }
 function moveItem(source, id, target, automated = false) {
@@ -298,16 +422,9 @@ function moveItem(source, id, target, automated = false) {
 
 function runCrane() {
   if (!hasWorker("crane")) return false;
-  if (state.incomingTruck?.logs.length) {
-    const item = state.incomingTruck.logs[0];
-    moveItem("incoming", item.id, "rawYard", true);
-    return true;
-  }
-  const emptyLine = state.cuttingLines.findIndex((line) => line && !line.input);
-  if (emptyLine >= 0 && state.rawYard.length) {
-    moveItem("rawYard", state.rawYard[0].id, `cutLine:${emptyLine}`, true);
-    return true;
-  }
+  if (state.incomingTruck?.logs.length) return moveItem("incoming", state.incomingTruck.logs[0].id, "rawYard", true);
+  const emptyLine = state.cuttingLines.findIndex((line) => line && !line.input && !line.broken);
+  if (emptyLine >= 0 && state.rawYard.length) return moveItem("rawYard", state.rawYard[0].id, `cutLine:${emptyLine}`, true);
   return false;
 }
 function runCutter() {
@@ -315,43 +432,70 @@ function runCutter() {
   for (let i = 0; i < state.cuttingLines.length; i++) if (cutOnce(i, true)) return true;
   return false;
 }
-function runForklift() {
-  if (!hasWorker("forklift")) return false;
+function eligibleForArtisan(stack) { return canImproveQuality(stack.quality); }
+function runClassifier() {
+  if (!hasWorker("classifier") || !state.artisanLine) return false;
+  if (state.artisanLine.input) return artisanStep(true);
+  if (state.artisanLine.output) return moveItem("artisanLine:output", state.artisanLine.output.id, "artisanYard", true);
+  const candidates = [];
+  state.cuttingLines.forEach((line, index) => line?.outputs.forEach((stack) => { if (eligibleForArtisan(stack)) candidates.push({ stack, source: `cutLine:${index}:output` }); }));
+  state.cutBuffer.forEach((stack) => { if (eligibleForArtisan(stack)) candidates.push({ stack, source: "cutBuffer" }); });
+  candidates.sort((a, b) => qMeta(a.stack.quality).rank - qMeta(b.stack.quality).rank);
+  if (!candidates.length) return false;
+  const chance = state.classifierLevel >= 2 ? 0.8 : 0.6;
+  if (Math.random() > chance) return false;
+  return moveItem(candidates[0].source, candidates[0].stack.id, "artisanLine", true);
+}
+function performForkliftTask() {
+  for (let i = 0; i < state.packagingLines.length; i++) {
+    const line = state.packagingLines[i];
+    if (line?.outputs.length && state.dispatchTruck.length < state.order.quantity) return moveItem(`packLine:${i}:output`, line.outputs[0].id, "dispatchTruck", true);
+  }
+  if (state.finishedYard.length && state.dispatchTruck.length < state.order.quantity) return moveItem("finishedYard", state.finishedYard[0].id, "dispatchTruck", true);
+  for (let i = 0; i < state.packagingLines.length; i++) {
+    const line = state.packagingLines[i];
+    if (!line || line.queue.length >= packCapacity(line)) continue;
+    if (state.artisanYard.length) return moveItem("artisanYard", state.artisanYard[0].id, `packLine:${i}`, true);
+    if (state.cutBuffer.length) return moveItem("cutBuffer", state.cutBuffer[0].id, `packLine:${i}`, true);
+    for (let c = 0; c < state.cuttingLines.length; c++) {
+      const cut = state.cuttingLines[c];
+      if (cut?.outputs.length && !eligibleForArtisan(cut.outputs[0])) return moveItem(`cutLine:${c}:output`, cut.outputs[0].id, `packLine:${i}`, true);
+    }
+  }
   for (let i = 0; i < state.cuttingLines.length; i++) {
     const line = state.cuttingLines[i];
-    if (line?.outputs.length) {
-      moveItem(`cutLine:${i}:output`, line.outputs[0].id, "cutBuffer", true);
-      return true;
-    }
+    if (line?.outputs.length) return moveItem(`cutLine:${i}:output`, line.outputs[0].id, "cutBuffer", true);
   }
   for (let i = 0; i < state.packagingLines.length; i++) {
     const line = state.packagingLines[i];
-    if (line?.outputs.length) {
-      moveItem(`packLine:${i}:output`, line.outputs[0].id, "finishedYard", true);
-      return true;
-    }
-  }
-  for (let i = 0; i < state.packagingLines.length; i++) {
-    const line = state.packagingLines[i];
-    if (line && state.cutBuffer.length && line.queue.length < packQueueCapacity(line)) {
-      moveItem("cutBuffer", state.cutBuffer[0].id, `packLine:${i}`, true);
-      return true;
-    }
-  }
-  if (state.finishedYard.length && state.dispatchTruck.length < state.order.quantity) {
-    moveItem("finishedYard", state.finishedYard[0].id, "dispatchTruck", true);
-    return true;
+    if (line?.outputs.length) return moveItem(`packLine:${i}:output`, line.outputs[0].id, "finishedYard", true);
   }
   return false;
+}
+function runForklifts() {
+  const count = workerCount("forklift");
+  if (!count) return false;
+  let changed = false;
+  for (let i = 0; i < count; i++) changed = performForkliftTask() || changed;
+  return changed;
 }
 function runPacker() {
   if (!hasWorker("packer")) return false;
   for (let i = 0; i < state.packagingLines.length; i++) if (packagingStep(i, true)) return true;
   return false;
 }
+function runMaintenance() {
+  if (!hasWorker("maintenance")) return false;
+  const candidates = [];
+  state.cuttingLines.forEach((line, index) => { if (line && line.health < 82) candidates.push({ kind: "cut", index, health: line.health }); });
+  state.packagingLines.forEach((line, index) => { if (line && line.health < 82) candidates.push({ kind: "pack", index, health: line.health }); });
+  candidates.sort((a, b) => a.health - b.health);
+  if (!candidates.length) return false;
+  return repairLine(candidates[0].kind, candidates[0].index, true);
+}
 
 function payroll() {
-  const total = Object.values(state.workers).reduce((sum, w) => sum + w.salary, 0);
+  const total = hiredWorkers().reduce((sum, w) => sum + w.salary, 0);
   if (!total) return;
   state.money -= total;
   addLog(`💸 Sueldos del mes: -${formatMoney(total)} 🌿.`);
@@ -360,25 +504,32 @@ function payroll() {
 function draggableItem(item, source, label) {
   return `<span class="item" draggable="true" data-id="${item.id}" data-source="${source}" title="Arrastrar">${label}</span>`;
 }
+function stackChip(stack, source) { return draggableItem(stack, source, `🟫 ${qLabel(stack.quality)}`); }
+function packageChip(pkg, source) { return draggableItem(pkg, source, `📦 ${qLabel(pkg.quality)}`); }
 function upgradeButton(label, kind, level, max, cost, index, machine) {
   if (level >= max) return `<button disabled>✅ ${label} · MAX</button>`;
   return `<button class="machine-upgrade" data-machine="${machine}" data-index="${index}" data-kind="${kind}">⚙️ ${label} · ${formatMoney(cost)} 🌿</button>`;
+}
+function healthText(line) {
+  const stateText = line.broken ? "💥 ROTA" : line.health < 45 ? "🔴 crítica" : line.health < 70 ? "🟠 gastada" : "🟢 operativa";
+  return `${stateText} · ${Math.round(line.health)}%`;
 }
 function renderCuttingLines() {
   return state.cuttingLines.map((line, index) => {
     if (!line) return `<div class="machine empty">Espacio ${index + 1}<br>vacío</div>`;
     const input = line.input ? draggableItem(line.input, `cutLine:${index}:input`, `🪵 ${line.input.cutsRemaining}/80`) : `<span class="warn">Sin tronco</span>`;
-    const outputs = line.outputs.length ? line.outputs.map((x) => draggableItem(x, `cutLine:${index}:output`, "🟫 Pila")).join("") : "Salida libre";
-    const blocked = !line.input || line.outputs.length >= cutOutputCapacity(line);
+    const outputs = line.outputs.length ? line.outputs.map((x) => stackChip(x, `cutLine:${index}:output`)).join("") : "Salida libre";
+    const blocked = !line.input || line.broken || line.outputs.length >= cutOutputCapacity(line);
     const speedCost = upgradeCost("cutSpeed", line.upgrades.speed);
     const outCost = upgradeCost("cutOutput", line.upgrades.output);
     return `<div class="machine dropzone" data-drop="cutLine:${index}">
       <b>Línea ${index + 1}</b><br>
+      Estado: ${healthText(line)}<br>
       Entrada: ${input}<br>
       <progress max="${CONFIG.cutsPerStack}" value="${line.cutProgress}"></progress>
       <small>${line.cutProgress}/${CONFIG.cutsPerStack} cortes</small><br>
       Salida (${line.outputs.length}/${cutOutputCapacity(line)}): ${outputs}
-      <div class="action-row"><button class="hold-cut" data-line="${index}" ${blocked ? "disabled" : ""}>🪚 Mantener para cortar</button><button class="toggle-upgrades" data-machine="cut" data-index="${index}">⚙️ Mejoras</button></div>
+      <div class="action-row"><button class="hold-cut" data-line="${index}" ${blocked ? "disabled" : ""}>🪚 Mantener / clickear para cortar</button><button class="repair-line" data-kind="cut" data-index="${index}" ${line.health >= 100 ? "disabled" : ""}>🔧 Reparar</button><button class="toggle-upgrades" data-machine="cut" data-index="${index}">⚙️ Mejoras</button></div>
       ${line.upgradeOpen ? `<div class="upgrade-menu">${upgradeButton("Ritmo de corte", "cutSpeed", line.upgrades.speed, 3, speedCost, index, "cut")}${upgradeButton("Acumulador de salida", "cutOutput", line.upgrades.output, 2, outCost, index, "cut")}</div>` : ""}
     </div>`;
   }).join("");
@@ -386,48 +537,70 @@ function renderCuttingLines() {
 function renderPackagingLines() {
   return state.packagingLines.map((line, index) => {
     if (!line) return `<div class="machine empty">Espacio ${index + 1}<br>vacío</div>`;
-    const queue = line.queue.length ? line.queue.map((x) => draggableItem(x, `packLine:${index}:queue`, "🟫")).join("") : `<span class="warn">Vacía</span>`;
-    const outputs = line.outputs.length ? line.outputs.map((x) => draggableItem(x, `packLine:${index}:output`, "✅📦")).join("") : "Salida libre";
+    const queue = line.queue.length ? line.queue.map((x) => stackChip(x, `packLine:${index}:queue`)).join("") : `<span class="warn">Vacía</span>`;
+    const outputs = line.outputs.length ? line.outputs.map((x) => packageChip(x, `packLine:${index}:output`)).join("") : "Salida libre";
     const action = line.queue.length ? CONFIG.packagingSteps[line.step] : "Esperando carga";
-    const blocked = !line.queue.length || line.outputs.length >= packOutputCapacity(line);
-    const queueCost = upgradeCost("packQueue", line.upgrades.queue);
-    const outCost = upgradeCost("packOutput", line.upgrades.output);
+    const blocked = !line.queue.length || line.broken || line.outputs.length >= packCapacity(line);
+    const capCost = upgradeCost("packCapacity", line.upgrades.capacity);
     return `<div class="machine dropzone" data-drop="packLine:${index}">
       <b>Embalaje ${index + 1}</b><br>
-      Cola (${line.queue.length}/${packQueueCapacity(line)}): ${queue}<br>
+      Estado: ${healthText(line)}<br>
+      Entrada (${line.queue.length}/${packCapacity(line)}): ${queue}<br>
       <progress max="5" value="${line.step}"></progress>
       <small>${line.step}/5 · ${action}</small><br>
-      Salida (${line.outputs.length}/${packOutputCapacity(line)}): ${outputs}
-      <div class="action-row"><button class="pack-step" data-line="${index}" ${blocked ? "disabled" : ""}>📦 ${action}</button><button class="toggle-upgrades" data-machine="pack" data-index="${index}">⚙️ Mejoras</button></div>
-      ${line.upgradeOpen ? `<div class="upgrade-menu">${upgradeButton("Cola de entrada +1", "packQueue", line.upgrades.queue, 3, queueCost, index, "pack")}${upgradeButton("Acumulador de salida", "packOutput", line.upgrades.output, 2, outCost, index, "pack")}</div>` : ""}
+      Salida (${line.outputs.length}/${packCapacity(line)}): ${outputs}
+      <div class="action-row"><button class="pack-step" data-line="${index}" ${blocked ? "disabled" : ""}>📦 ${action}</button><button class="repair-line" data-kind="pack" data-index="${index}" ${line.health >= 100 ? "disabled" : ""}>🔧 Reparar</button><button class="toggle-upgrades" data-machine="pack" data-index="${index}">⚙️ Mejoras</button></div>
+      ${line.upgradeOpen ? `<div class="upgrade-menu">${upgradeButton(`Capacidad de línea +1 entrada/salida`, "packCapacity", line.upgrades.capacity, 3, capCost, index, "pack")}</div>` : ""}
     </div>`;
   }).join("");
 }
+function renderArtisanLine() {
+  if (!state.artisanLine) return `<span class="muted">Todavía no instalada.</span>`;
+  const line = state.artisanLine;
+  const input = line.input ? stackChip(line.input, "artisanLine:input") : `<span class="warn">Sin pila</span>`;
+  const output = line.output ? stackChip(line.output, "artisanLine:output") : "Salida libre";
+  const next = line.input ? nextQuality(line.input.quality) : null;
+  const blocked = !line.input || !next || line.output;
+  return `<div class="machine dropzone" data-drop="artisanLine">
+    <b>Línea artesanal</b><br>
+    Entrada: ${input}<br>
+    Objetivo: ${next ? qLabel(next) : line.input ? "No admite mejora" : "Esperando pila"}<br>
+    <progress max="10" value="${line.progress}"></progress><small>${line.progress}/10 troncos reapilados</small><br>
+    Salida: ${output}
+    <div class="action-row"><button id="artisanStep" ${blocked ? "disabled" : ""}>🪵 Reapilar 1 tronco</button></div>
+  </div>`;
+}
 function renderWorkers() {
   return WORKER_CATALOG.map((w) => {
-    const hired = worker(w.role);
+    const hired = isHired(w.id);
+    const roleCount = workerCount(w.role);
+    const maxed = roleCount >= w.max;
+    const extra = w.role === "classifier" && hired
+      ? `<div class="action-row">${state.classifierLevel >= 2 ? `<button disabled>🎓 Clasificación avanzada · desbloqueada</button>` : `<button id="trainClassifier" ${state.money < 9000 ? "disabled" : ""}>🎓 Capacitar: Primera → Premium · 9.000 🌿</button>`}</div>`
+      : "";
     return `<div class="worker-card ${hired ? "hired" : ""}">
-      <b>${w.icon} ${w.name}</b><br><small>${w.title}</small>
+      <b>${w.icon} ${w.name}</b><br><small>${w.title} · habilidad ${w.skill}</small>
       <p>${w.desc}</p>
-      ${hired ? `<span class="good">Contratado · ${formatMoney(w.salary)} 🌿/mes</span>` : `<button class="hire-worker" data-role="${w.role}" ${state.money < w.hire ? "disabled" : ""}>Contratar · ${formatMoney(w.hire)} 🌿</button><small>Sueldo: ${formatMoney(w.salary)} 🌿/mes</small>`}
+      ${hired ? `<span class="good">Contratado · ${formatMoney(w.salary)} 🌿/mes</span>${extra}` : `<button class="hire-worker" data-id="${w.id}" ${state.money < w.hire || maxed ? "disabled" : ""}>Contratar · ${formatMoney(w.hire)} 🌿</button><small>Sueldo: ${formatMoney(w.salary)} 🌿/mes</small>`}
     </div>`;
   }).join("");
+}
+function renderMaintenance() {
+  const rows = [];
+  state.cuttingLines.forEach((line, index) => { if (line) rows.push(`🪚 Corte ${index + 1}: ${healthText(line)}`); });
+  state.packagingLines.forEach((line, index) => { if (line) rows.push(`📦 Embalaje ${index + 1}: ${healthText(line)}`); });
+  const guard = bestWorker("maintenance");
+  return `<div>${guard ? `🔧 Guardia: <b>${guard.name}</b> · repara automáticamente la línea más deteriorada.` : `Sin guardia contratada: las reparaciones son manuales.`}</div><div>${rows.length ? rows.join("<br>") : "Todavía no hay máquinas instaladas."}</div>`;
 }
 function tutorialText() {
   if (!state.cuttingLines.some(Boolean)) return "1. Comprá tu primera línea de corte.";
   if (!state.incomingTruck && state.rawYard.length === 0 && !state.cuttingLines.some((l) => l?.input)) return "2. Comprá un camión de troncos.";
   if (state.incomingTruck && state.rawYard.length === 0 && !hasWorker("crane")) return "3. Arrastrá un 🪵 del camión a la Playa de troncos.";
   if (state.rawYard.length > 0 && !state.cuttingLines.some((l) => l?.input) && !hasWorker("crane")) return "4. Arrastrá un 🪵 desde la playa a una línea de corte.";
-  if (state.cuttingLines.some((l) => l?.input && l.outputs.length < cutOutputCapacity(l)) && !hasWorker("cutter")) return "5. Mantené apretado ‘cortar’ hasta producir una pila.";
-  if (state.cuttingLines.some((l) => l?.outputs.length) && state.cutBuffer.length === 0 && !hasWorker("forklift")) return "6. Arrastrá la 🟫 pila producida a la playa intermedia.";
-  if (!state.packagingLines.some(Boolean)) return "7. Comprá una línea de embalaje.";
-  if (state.cutBuffer.length > 0 && !state.packagingLines.some((l) => l?.queue.length) && !hasWorker("forklift")) return "8. Arrastrá una 🟫 pila a la línea de embalaje.";
-  if (state.packagingLines.some((l) => l?.queue.length) && !hasWorker("packer")) return "9. Hacé manualmente los cinco pasos de embalaje.";
-  if (state.packagingLines.some((l) => l?.outputs.length) && state.finishedYard.length === 0 && !hasWorker("forklift")) return "10. Llevá el paquete terminado a la Playa de salida.";
-  if (state.finishedYard.length > 0 && state.dispatchTruck.length === 0 && !hasWorker("forklift")) return "11. Arrastrá paquetes al camión hasta completar el pedido.";
-  if (state.dispatchTruck.length >= state.order.quantity) return "12. ¡Camión lleno! Despachá el pedido.";
-  if (state.completedOrders > 0) return "✅ Loop básico dominado. Ahora probá mejoras y contrataciones para dejar de hacer trabajo manual.";
-  return "Seguí produciendo hasta completar el pedido actual.";
+  if (state.cuttingLines.some((l) => l?.input && !l.broken) && !hasWorker("cutter")) return "5. Mantené apretado o hacé clicks rápidos para cortar.";
+  if (!state.packagingLines.some(Boolean)) return "6. Comprá una línea de embalaje.";
+  if (state.completedOrders > 0) return "✅ Loop básico dominado. Ahora jugá con calidad, desgaste, mantenimiento y artesanal.";
+  return "Seguí produciendo y completá el pedido actual.";
 }
 
 let activeHold = null;
@@ -442,21 +615,25 @@ function render() {
   document.querySelector("#tutorial").innerHTML = `<b>🎯 Tutorial</b><div class="tutorial-step">${tutorialText()}</div>`;
   document.querySelector("#workers").innerHTML = renderWorkers();
 
-  document.querySelector("#incoming").innerHTML = state.incomingTruck
-    ? `<div>Camión: ${state.incomingTruck.logs.length}/5 troncos</div>${state.incomingTruck.logs.map((x) => draggableItem(x, "incoming", "🪵")).join("")}`
-    : "Sin camión";
+  document.querySelector("#incoming").innerHTML = state.incomingTruck ? `<div>Camión: ${state.incomingTruck.logs.length}/5 troncos</div>${state.incomingTruck.logs.map((x) => draggableItem(x, "incoming", "🪵")).join("")}` : "Sin camión";
   document.querySelector("#rawYard").innerHTML = state.rawYard.length ? state.rawYard.map((x) => draggableItem(x, "rawYard", `🪵 ${x.cutsRemaining}`)).join("") : "Vacía";
   document.querySelector("#cutLines").innerHTML = renderCuttingLines();
-  document.querySelector("#cutBuffer").innerHTML = state.cutBuffer.length ? state.cutBuffer.map((x) => draggableItem(x, "cutBuffer", "🟫")).join("") : "Vacía";
+  document.querySelector("#cutBuffer").innerHTML = state.cutBuffer.length ? state.cutBuffer.map((x) => stackChip(x, "cutBuffer")).join("") : "Vacía";
+  document.querySelector("#artisanLine").innerHTML = renderArtisanLine();
+  document.querySelector("#artisanYard").innerHTML = state.artisanYard.length ? state.artisanYard.map((x) => stackChip(x, "artisanYard")).join("") : "Vacío";
   document.querySelector("#packLines").innerHTML = renderPackagingLines();
-  document.querySelector("#finishedYard").innerHTML = state.finishedYard.length ? state.finishedYard.map((x) => draggableItem(x, "finishedYard", "✅📦")).join("") : "Vacía";
-  document.querySelector("#dispatchTruck").innerHTML = `Carga: ${state.dispatchTruck.length}/${state.order.quantity}<br>${state.dispatchTruck.map(() => "✅📦").join(" ")}<div class="action-row"><button id="dispatchButton" ${state.dispatchTruck.length < state.order.quantity ? "disabled" : ""}>🚛 Despachar</button></div>`;
-  document.querySelector("#order").innerHTML = `<b>Pedido #${state.order.id.split("-")[1]}</b> · ${state.order.quantity} paquetes · recompensa ${formatMoney(state.order.reward)} 🌿`;
+  document.querySelector("#finishedYard").innerHTML = state.finishedYard.length ? state.finishedYard.map((x) => packageChip(x, "finishedYard")).join("") : "Vacía";
+  const truckValue = state.dispatchTruck.reduce((sum, item) => sum + itemValue(item), 0);
+  document.querySelector("#dispatchTruck").innerHTML = `Carga: ${state.dispatchTruck.length}/${state.order.quantity} · valor actual ${formatMoney(truckValue)} 🌿<br>${state.dispatchTruck.map((x) => `${qMeta(x.quality).icon}📦`).join(" ")}<div class="action-row"><button id="dispatchButton" ${state.dispatchTruck.length < state.order.quantity ? "disabled" : ""}>🚛 Despachar</button></div>`;
+  document.querySelector("#order").innerHTML = `<b>Pedido #${state.order.id.split("-")[1]}</b> · ${state.order.quantity} paquetes · paga según calidad real cargada`;
+  document.querySelector("#qualityPrices").innerHTML = Object.entries(QUALITY).map(([key, q]) => `${q.icon} ${q.name}: <b>${formatMoney(q.price)} 🌿</b>`).join(" · ");
+  document.querySelector("#maintenance").innerHTML = renderMaintenance();
   document.querySelector("#log").innerHTML = state.log.map((entry) => `<div class="log-entry">${entry}</div>`).join("");
 
   document.querySelector("#buyLogs").disabled = Boolean(state.incomingTruck) || state.money < CONFIG.logTruckCost;
   document.querySelector("#buyCutLine").disabled = !state.cuttingLines.includes(null) || state.money < CONFIG.cuttingLineCost;
   document.querySelector("#buyPackLine").disabled = !state.packagingLines.includes(null) || state.money < CONFIG.packagingLineCost;
+  document.querySelector("#buyArtisanLine").disabled = Boolean(state.artisanLine) || state.money < CONFIG.artisanLineCost;
   bindDynamicEvents();
 }
 
@@ -474,14 +651,16 @@ function bindDynamicEvents() {
   });
   document.querySelectorAll(".pack-step").forEach((button) => button.addEventListener("click", () => packagingStep(Number(button.dataset.line))));
   document.querySelectorAll(".hold-cut").forEach((button) => {
+    button.addEventListener("click", () => cutOnce(Number(button.dataset.line)));
     button.addEventListener("pointerdown", () => {
       stopHold();
       const index = Number(button.dataset.line);
-      cutOnce(index);
       const line = state.cuttingLines[index];
       activeHold = setInterval(() => cutOnce(index), cutInterval(line));
     });
   });
+  document.querySelectorAll(".repair-line").forEach((button) => button.addEventListener("click", () => repairLine(button.dataset.kind, Number(button.dataset.index))));
+  document.querySelector("#artisanStep")?.addEventListener("click", () => artisanStep(false));
   document.querySelectorAll(".toggle-upgrades").forEach((button) => button.addEventListener("click", () => {
     const index = Number(button.dataset.index);
     const line = button.dataset.machine === "cut" ? state.cuttingLines[index] : state.packagingLines[index];
@@ -491,9 +670,10 @@ function bindDynamicEvents() {
   document.querySelectorAll(".machine-upgrade").forEach((button) => button.addEventListener("click", () => {
     const index = Number(button.dataset.index);
     if (button.dataset.machine === "cut") buyCutUpgrade(index, button.dataset.kind);
-    else buyPackUpgrade(index, button.dataset.kind);
+    else buyPackUpgrade(index);
   }));
-  document.querySelectorAll(".hire-worker").forEach((button) => button.addEventListener("click", () => hire(button.dataset.role)));
+  document.querySelectorAll(".hire-worker").forEach((button) => button.addEventListener("click", () => hire(button.dataset.id)));
+  document.querySelector("#trainClassifier")?.addEventListener("click", trainClassifier);
   document.querySelector("#dispatchButton")?.addEventListener("click", dispatchOrder);
 }
 
@@ -503,6 +683,7 @@ document.addEventListener("visibilitychange", stopHold);
 document.querySelector("#buyLogs").addEventListener("click", buyLogs);
 document.querySelector("#buyCutLine").addEventListener("click", buyCuttingLine);
 document.querySelector("#buyPackLine").addEventListener("click", buyPackagingLine);
+document.querySelector("#buyArtisanLine").addEventListener("click", buyArtisanLine);
 document.querySelectorAll("[data-speed]").forEach((button) => {
   button.addEventListener("click", () => {
     state.speed = Number(button.dataset.speed);
@@ -526,7 +707,7 @@ setInterval(() => {
   automationElapsed += 1000 * state.speed;
   if (automationElapsed >= CONFIG.automationMs) {
     automationElapsed = 0;
-    const changed = runCrane() | runCutter() | runForklift() | runPacker();
+    const changed = Boolean(runMaintenance() | runCrane() | runCutter() | runClassifier() | runForklifts() | runPacker());
     if (changed) render();
   } else {
     document.querySelector("#clock").textContent = timeLabel();
