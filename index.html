@@ -5,47 +5,91 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Castorium</title>
   <link rel="stylesheet" href="./styles.css" />
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
-      }
-    }
-  </script>
 </head>
 <body>
-  <div id="game"></div>
-
-  <header class="hud topbar">
-    <div><strong>CASTORIUM</strong> <span id="dayLabel">Día 1 · Mañana</span></div>
-    <div class="money">🌿 <span id="moneyLabel">50.000</span></div>
-    <div class="time-controls">
-      <button data-speed="0">⏸</button>
-      <button data-speed="1" class="active">▶</button>
-      <button data-speed="2">▶▶</button>
-      <button data-speed="4">▶▶▶</button>
-    </div>
+  <header>
+    <strong>🦫 CASTORIUM</strong>
+    <span id="clock">Día 1 · Mañana · 08:00</span>
+    <span>🌿 <b id="money">50.000</b></span>
+    <span id="boss">Jefe: libre</span>
+    <button data-speed="0">⏸</button>
+    <button data-speed="1" class="active">▶</button>
+    <button data-speed="2">▶▶</button>
+    <button data-speed="4">▶▶▶</button>
   </header>
 
-  <aside class="hud tutorial" id="tutorialPanel">
-    <strong id="tutorialTitle">Primer día en Castorium</strong>
-    <p id="tutorialText"></p>
-    <button id="tutorialAction" hidden></button>
-  </aside>
+  <section id="tutorial" class="panel"></section>
 
-  <aside class="hud selection" id="selectionPanel">
-    <strong id="selectionTitle">Galpón vacío</strong>
-    <p id="selectionBody">Hacé click sobre una zona u objeto del galpón.</p>
-    <div id="selectionActions" class="action-list"></div>
-  </aside>
+  <main>
+    <section class="panel">
+      <h2>Compras</h2>
+      <button id="buyLogs">🚚 Comprar 5 troncos · 1.000 🌿</button>
+      <button id="buyCutLine">🪚 Comprar línea de corte · 12.000 🌿</button>
+      <button id="buyPackLine">📦 Comprar línea de embalaje · 8.000 🌿</button>
+    </section>
 
-  <aside class="hud log-panel">
-    <strong>Eventos</strong>
-    <div id="eventLog"></div>
-  </aside>
+    <section class="panel">
+      <h2>Galpón</h2>
+      <div class="flow">
+        <div class="zone dropzone" data-drop="incoming">
+          <h3>🚚 Recepción</h3>
+          <div id="incoming"></div>
+        </div>
 
-  <div class="hint" id="hint">Arrastrá para rotar · rueda para zoom · click para interactuar</div>
+        <div class="zone dropzone" data-drop="rawYard">
+          <h3>🪵 Playa de troncos</h3>
+          <div id="rawYard"></div>
+        </div>
+
+        <div class="zone wide">
+          <h3>🪚 Líneas de corte</h3>
+          <div id="cutLines" class="slots"></div>
+        </div>
+
+        <div class="zone dropzone" data-drop="cutBuffer">
+          <h3>🟫 Pilas de troncos</h3>
+          <div id="cutBuffer"></div>
+        </div>
+
+        <div class="zone wide">
+          <h3>📦 Líneas de embalaje</h3>
+          <div id="packLines" class="slots"></div>
+        </div>
+
+        <div class="zone dropzone" data-drop="finishedYard">
+          <h3>✅ Playa de salida</h3>
+          <div id="finishedYard"></div>
+        </div>
+
+        <div class="zone dropzone" data-drop="dispatchTruck">
+          <h3>🚛 Despacho</h3>
+          <div id="dispatchTruck"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Pedido actual</h2>
+      <div id="order"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Futuros sectores</h2>
+      <div class="future-grid">
+        <button disabled>🔧 Mantenimiento</button>
+        <button disabled>👔 Supervisor</button>
+        <button disabled>📋 Despachantes</button>
+        <button disabled>⛑️ Seguridad e Higiene</button>
+        <button disabled>💡 Ingeniería y Desarrollo</button>
+        <button disabled>🦫 Personal</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Eventos</h2>
+      <div id="log"></div>
+    </section>
+  </main>
 
   <script type="module" src="./src/main.js"></script>
 </body>
