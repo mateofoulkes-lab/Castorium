@@ -13,9 +13,9 @@
     <span>🌿 <b id="money">50.000</b></span>
     <span id="boss">Jefe: libre</span>
     <button data-speed="0">⏸</button>
-    <button data-speed="1" class="active">▶</button>
-    <button data-speed="2">▶▶</button>
-    <button data-speed="4">▶▶▶</button>
+    <button data-speed="1" class="active">▶ x1</button>
+    <button data-speed="16">▶▶ x16</button>
+    <button data-speed="64">▶▶▶ x64</button>
   </header>
 
   <section id="tutorial" class="panel"></section>
@@ -33,6 +33,18 @@
       <h2>Personal</h2>
       <p class="muted">Cada línea necesita su propio operador. Máximo: 3 operadores de corte, 2 embaladores y 4 autoelevadoristas. Los sueldos se pagan cada 30 días.</p>
       <div id="workers" class="worker-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>👔 Supervisión</h2>
+      <p class="muted">El supervisor puede reasignar personal y apretar el ritmo de producción. Sirve, pero abusar de eso calienta el gremio.</p>
+      <div id="supervisor"></div>
+    </section>
+
+    <section class="panel">
+      <h2>🐿️ Gremio de Ardillas</h2>
+      <p class="muted">Automatización, reasignaciones frecuentes y presión productiva aumentan la temperatura gremial. Los reclamos salariales pueden terminar en acuerdo… o en huelga.</p>
+      <div id="union"></div>
     </section>
 
     <section class="panel">
@@ -77,9 +89,9 @@
     <section class="panel">
       <h2>Futuros sectores</h2>
       <div class="future-grid">
-        <button disabled>👔 Supervisor</button>
         <button disabled>⛑️ Seguridad e Higiene</button>
-        <button disabled>🐿️ Relaciones gremiales</button>
+        <button disabled>📊 Estadísticas de planta</button>
+        <button disabled>🧑‍🏫 Capacitación avanzada</button>
       </div>
     </section>
 
