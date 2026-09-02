@@ -13,6 +13,7 @@ const CONFIG = {
 };
 
 let nextId = 1;
+let activeCutHold = null;
 const uid = (prefix) => `${prefix}-${nextId++}`;
 
 const state = {
@@ -34,52 +35,15 @@ const state = {
 };
 
 function createOrder(quantity = randomInt(3, 7)) {
-  return {
-    id: uid("order"),
-    quantity,
-    reward: quantity * CONFIG.packageSalePrice,
-  };
+  return { id: uid("order"), quantity, reward: quantity * CONFIG.packageSalePrice };
 }
-
-function createLog() {
-  return { id: uid("log"), type: "log", cutsRemaining: CONFIG.cutsPerLog };
-}
-
-function createCutStack() {
-  return { id: uid("stack"), type: "stack" };
-}
-
-function createFinishedPackage() {
-  return { id: uid("package"), type: "package" };
-}
-
-function newCuttingLine(slot) {
-  return {
-    id: uid("cutline"),
-    slot,
-    input: null,
-    cutProgress: 0,
-    output: null,
-  };
-}
-
-function newPackagingLine(slot) {
-  return {
-    id: uid("packline"),
-    slot,
-    input: null,
-    step: 0,
-    output: null,
-  };
-}
-
-function randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function formatMoney(value) {
-  return new Intl.NumberFormat("es-AR").format(value);
-}
+function createLog() { return { id: uid("log"), type: "log", cutsRemaining: CONFIG.cutsPerLog }; }
+function createCutStack() { return { id: uid("stack"), type: "stack" }; }
+function createFinishedPackage() { return { id: uid("package"), type: "package" }; }
+function newCuttingLine(slot) { return { id: uid("cutline"), slot, input: null, cutProgress: 0, output: null }; }
+function newPackagingLine(slot) { return { id: uid("packline"), slot, input: null, step: 0, output: null }; }
+function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function formatMoney(value) { return new Intl.NumberFormat("es-AR").format(value); }
 
 function timeLabel() {
   const hour = Math.floor(state.minute / 60) % 24;
@@ -93,24 +57,21 @@ function addLog(message) {
   state.log.unshift(`${stamp} — ${message}`);
   state.log = state.log.slice(0, 50);
 }
+function setBoss(text) { state.boss = text; }
+function spend(amount) { if (state.money < amount) return false; state.money -= amount; return true; }
 
-function setBoss(text) {
-  state.boss = text;
+function stopCutHold() {
+  if (activeCutHold) clearInterval(activeCutHold);
+  activeCutHold = null;
 }
-
-function spend(amount) {
-  if (state.money < amount) return false;
-  state.money -= amount;
-  return true;
-}
+window.addEventListener("pointerup", stopCutHold);
+window.addEventListener("pointercancel", stopCutHold);
+window.addEventListener("blur", stopCutHold);
 
 function buyLogs() {
   if (state.incomingTruck) return addLog("⚠ Ya hay un camión esperando en recepción."), render();
   if (!spend(CONFIG.logTruckCost)) return addLog("⚠ No alcanzan las ramitas."), render();
-  state.incomingTruck = {
-    id: uid("truck"),
-    logs: Array.from({ length: CONFIG.logsPerTruck }, createLog),
-  };
+  state.incomingTruck = { id: uid("truck"), logs: Array.from({ length: CONFIG.logsPerTruck }, createLog) };
   addLog("🚚 Llegó un camión con 5 troncos.");
   render();
 }
@@ -135,7 +96,7 @@ function buyPackagingLine() {
 
 function cutOnce(lineIndex) {
   const line = state.cuttingLines[lineIndex];
-  if (!line?.input || line.output) return;
+  if (!line?.input || line.output) return stopCutHold();
 
   setBoss(`operando corte ${lineIndex + 1}`);
   line.cutProgress += 1;
@@ -145,25 +106,24 @@ function cutOnce(lineIndex) {
     line.cutProgress = 0;
     line.output = createCutStack();
     addLog(`🟫 Línea ${lineIndex + 1} produjo una pila. Salida bloqueada hasta retirarla.`);
+    stopCutHold();
   }
 
   if (line.input && line.input.cutsRemaining <= 0) {
     addLog(`🪵 Tronco agotado en línea ${lineIndex + 1}.`);
     line.input = null;
+    stopCutHold();
   }
-
   render();
 }
 
 function packagingStep(lineIndex) {
   const line = state.packagingLines[lineIndex];
   if (!line?.input || line.output) return;
-
   setBoss(`embalando en línea ${lineIndex + 1}`);
   const action = CONFIG.packagingSteps[line.step];
   addLog(`📦 ${action} — línea de embalaje ${lineIndex + 1}.`);
   line.step += 1;
-
   if (line.step >= CONFIG.packagingSteps.length) {
     line.output = createFinishedPackage();
     line.input = null;
@@ -178,7 +138,6 @@ function dispatchOrder() {
     addLog(`⚠ El camión necesita ${state.order.quantity - state.dispatchTruck.length} paquete(s) más.`);
     return render();
   }
-
   state.money += state.order.reward;
   state.dispatchTruck.splice(0, state.order.quantity);
   state.completedOrders += 1;
@@ -193,7 +152,6 @@ function findItem(source, id) {
   if (source === "rawYard") return state.rawYard.find((x) => x.id === id) ?? null;
   if (source === "cutBuffer") return state.cutBuffer.find((x) => x.id === id) ?? null;
   if (source === "finishedYard") return state.finishedYard.find((x) => x.id === id) ?? null;
-
   const [kind, indexText, part] = source.split(":");
   const index = Number(indexText);
   if (kind === "cutLine") return state.cuttingLines[index]?.[part] ?? null;
@@ -201,24 +159,24 @@ function findItem(source, id) {
   return null;
 }
 
-function removeItem(source, id) {
-  const removeFrom = (arr) => {
-    const i = arr.findIndex((x) => x.id === id);
-    if (i < 0) return null;
-    return arr.splice(i, 1)[0];
-  };
+function removeFrom(arr, id) {
+  const i = arr.findIndex((x) => x.id === id);
+  if (i < 0) return null;
+  return arr.splice(i, 1)[0];
+}
 
+function removeItem(source, id) {
   if (source === "incoming") {
-    const item = removeFrom(state.incomingTruck.logs);
-    if (state.incomingTruck.logs.length === 0) {
+    const item = removeFrom(state.incomingTruck?.logs ?? [], id);
+    if (state.incomingTruck && state.incomingTruck.logs.length === 0) {
       addLog("🚚 Camión de materia prima vacío; se retiró.");
       state.incomingTruck = null;
     }
     return item;
   }
-  if (source === "rawYard") return removeFrom(state.rawYard);
-  if (source === "cutBuffer") return removeFrom(state.cutBuffer);
-  if (source === "finishedYard") return removeFrom(state.finishedYard);
+  if (source === "rawYard") return removeFrom(state.rawYard, id);
+  if (source === "cutBuffer") return removeFrom(state.cutBuffer, id);
+  if (source === "finishedYard") return removeFrom(state.finishedYard, id);
 
   const [kind, indexText, part] = source.split(":");
   const index = Number(indexText);
@@ -227,6 +185,7 @@ function removeItem(source, id) {
     if (line?.[part]?.id === id) {
       const item = line[part];
       line[part] = null;
+      if (part === "input") line.cutProgress = 0;
       return item;
     }
   }
@@ -235,6 +194,7 @@ function removeItem(source, id) {
     if (line?.[part]?.id === id) {
       const item = line[part];
       line[part] = null;
+      if (part === "input") line.step = 0;
       return item;
     }
   }
@@ -247,7 +207,6 @@ function canDrop(item, target) {
   if (target === "cutBuffer") return item.type === "stack";
   if (target === "finishedYard") return item.type === "package";
   if (target === "dispatchTruck") return item.type === "package" && state.dispatchTruck.length < state.order.quantity;
-
   const [kind, indexText] = target.split(":");
   const index = Number(indexText);
   if (kind === "cutLine") return item.type === "log" && state.cuttingLines[index] && !state.cuttingLines[index].input;
@@ -282,6 +241,7 @@ function moveItem(source, id, target) {
   const item = findItem(source, id);
   if (!canDrop(item, target)) return false;
   const removed = removeItem(source, id);
+  if (!removed) return false;
   placeItem(removed, target);
   setBoss(target === "rawYard" || target.startsWith("cutLine") ? "en grúa" : "en autoelevador");
   addLog(describeMove(removed, target));
@@ -296,12 +256,8 @@ function draggableItem(item, source, label) {
 function renderCuttingLines() {
   return state.cuttingLines.map((line, index) => {
     if (!line) return `<div class="machine empty">Espacio ${index + 1}<br>vacío</div>`;
-    const input = line.input
-      ? draggableItem(line.input, `cutLine:${index}:input`, `🪵 ${line.input.cutsRemaining}/80`)
-      : `<span class="warn">Sin tronco</span>`;
-    const output = line.output
-      ? draggableItem(line.output, `cutLine:${index}:output`, "🟫 Pila lista")
-      : "Salida libre";
+    const input = line.input ? draggableItem(line.input, `cutLine:${index}:input`, `🪵 ${line.input.cutsRemaining}/80`) : `<span class="warn">Sin tronco</span>`;
+    const output = line.output ? draggableItem(line.output, `cutLine:${index}:output`, "🟫 Pila lista") : "Salida libre";
     const disabled = !line.input || line.output ? "disabled" : "";
     return `<div class="machine dropzone" data-drop="cutLine:${index}">
       <b>Línea ${index + 1}</b><br>
@@ -317,12 +273,8 @@ function renderCuttingLines() {
 function renderPackagingLines() {
   return state.packagingLines.map((line, index) => {
     if (!line) return `<div class="machine empty">Espacio ${index + 1}<br>vacío</div>`;
-    const input = line.input
-      ? draggableItem(line.input, `packLine:${index}:input`, "🟫 Pila")
-      : `<span class="warn">Sin pila</span>`;
-    const output = line.output
-      ? draggableItem(line.output, `packLine:${index}:output`, "✅ Paquete")
-      : "Salida libre";
+    const input = line.input ? draggableItem(line.input, `packLine:${index}:input`, "🟫 Pila") : `<span class="warn">Sin pila</span>`;
+    const output = line.output ? draggableItem(line.output, `packLine:${index}:output`, "✅ Paquete") : "Salida libre";
     const action = line.input ? CONFIG.packagingSteps[line.step] : "Esperando carga";
     const disabled = !line.input || line.output ? "disabled" : "";
     return `<div class="machine dropzone" data-drop="packLine:${index}">
@@ -362,21 +314,11 @@ function render() {
   document.querySelector("#incoming").innerHTML = state.incomingTruck
     ? `<div>Camión: ${state.incomingTruck.logs.length}/5 troncos</div>${state.incomingTruck.logs.map((x) => draggableItem(x, "incoming", "🪵")).join("")}`
     : "Sin camión";
-
-  document.querySelector("#rawYard").innerHTML = state.rawYard.length
-    ? state.rawYard.map((x) => draggableItem(x, "rawYard", `🪵 ${x.cutsRemaining}`)).join("")
-    : "Vacía";
-
+  document.querySelector("#rawYard").innerHTML = state.rawYard.length ? state.rawYard.map((x) => draggableItem(x, "rawYard", `🪵 ${x.cutsRemaining}`)).join("") : "Vacía";
   document.querySelector("#cutLines").innerHTML = renderCuttingLines();
-  document.querySelector("#cutBuffer").innerHTML = state.cutBuffer.length
-    ? state.cutBuffer.map((x) => draggableItem(x, "cutBuffer", "🟫")).join("")
-    : "Vacía";
-
+  document.querySelector("#cutBuffer").innerHTML = state.cutBuffer.length ? state.cutBuffer.map((x) => draggableItem(x, "cutBuffer", "🟫")).join("") : "Vacía";
   document.querySelector("#packLines").innerHTML = renderPackagingLines();
-  document.querySelector("#finishedYard").innerHTML = state.finishedYard.length
-    ? state.finishedYard.map((x) => draggableItem(x, "finishedYard", "✅📦")).join("")
-    : "Vacía";
-
+  document.querySelector("#finishedYard").innerHTML = state.finishedYard.length ? state.finishedYard.map((x) => draggableItem(x, "finishedYard", "✅📦")).join("") : "Vacía";
   document.querySelector("#dispatchTruck").innerHTML = `Carga: ${state.dispatchTruck.length}/${state.order.quantity}<br>${state.dispatchTruck.map(() => "✅📦").join(" ")}<div class="action-row"><button id="dispatchButton" ${state.dispatchTruck.length < state.order.quantity ? "disabled" : ""}>🚛 Despachar</button></div>`;
   document.querySelector("#order").innerHTML = `<b>Pedido #${state.order.id.split("-")[1]}</b> · ${state.order.quantity} paquetes · recompensa ${formatMoney(state.order.reward)} 🌿`;
   document.querySelector("#log").innerHTML = state.log.map((entry) => `<div class="log-entry">${entry}</div>`).join("");
@@ -384,25 +326,18 @@ function render() {
   document.querySelector("#buyLogs").disabled = Boolean(state.incomingTruck) || state.money < CONFIG.logTruckCost;
   document.querySelector("#buyCutLine").disabled = !state.cuttingLines.includes(null) || state.money < CONFIG.cuttingLineCost;
   document.querySelector("#buyPackLine").disabled = !state.packagingLines.includes(null) || state.money < CONFIG.packagingLineCost;
-
   bindDynamicEvents();
 }
 
 function bindDynamicEvents() {
   document.querySelectorAll("[draggable=true]").forEach((el) => {
     el.addEventListener("dragstart", (event) => {
-      event.dataTransfer.setData("application/json", JSON.stringify({
-        id: el.dataset.id,
-        source: el.dataset.source,
-      }));
+      event.dataTransfer.setData("application/json", JSON.stringify({ id: el.dataset.id, source: el.dataset.source }));
     });
   });
 
   document.querySelectorAll(".dropzone").forEach((zone) => {
-    zone.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      zone.classList.add("dragover");
-    });
+    zone.addEventListener("dragover", (event) => { event.preventDefault(); zone.classList.add("dragover"); });
     zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
     zone.addEventListener("drop", (event) => {
       event.preventDefault();
@@ -410,9 +345,7 @@ function bindDynamicEvents() {
       try {
         const data = JSON.parse(event.dataTransfer.getData("application/json"));
         moveItem(data.source, data.id, zone.dataset.drop);
-      } catch {
-        // Ignore malformed drags.
-      }
+      } catch { /* ignore malformed drags */ }
     });
   });
 
@@ -420,20 +353,14 @@ function bindDynamicEvents() {
     button.addEventListener("click", () => packagingStep(Number(button.dataset.line)));
   });
 
-  let holdTimer = null;
-  const stopHold = () => {
-    if (holdTimer) clearInterval(holdTimer);
-    holdTimer = null;
-  };
   document.querySelectorAll(".hold-cut").forEach((button) => {
     button.addEventListener("pointerdown", () => {
+      stopCutHold();
       const index = Number(button.dataset.line);
       cutOnce(index);
-      holdTimer = setInterval(() => cutOnce(index), 180);
+      if (!state.cuttingLines[index]?.input || state.cuttingLines[index]?.output) return;
+      activeCutHold = setInterval(() => cutOnce(index), 180);
     });
-    button.addEventListener("pointerup", stopHold);
-    button.addEventListener("pointerleave", stopHold);
-    button.addEventListener("pointercancel", stopHold);
   });
 
   document.querySelector("#dispatchButton")?.addEventListener("click", dispatchOrder);
@@ -442,7 +369,6 @@ function bindDynamicEvents() {
 document.querySelector("#buyLogs").addEventListener("click", buyLogs);
 document.querySelector("#buyCutLine").addEventListener("click", buyCuttingLine);
 document.querySelector("#buyPackLine").addEventListener("click", buyPackagingLine);
-
 document.querySelectorAll("[data-speed]").forEach((button) => {
   button.addEventListener("click", () => {
     state.speed = Number(button.dataset.speed);
