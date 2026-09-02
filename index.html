@@ -31,8 +31,14 @@
 
     <section class="panel">
       <h2>Personal</h2>
-      <p class="muted">Las contrataciones automatizan tareas. Máximo: 4 autoelevadoristas. Los sueldos se pagan cada 30 días.</p>
+      <p class="muted">Cada línea necesita su propio operador. Máximo: 3 operadores de corte, 2 embaladores y 4 autoelevadoristas. Los sueldos se pagan cada 30 días.</p>
       <div id="workers" class="worker-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>🚜 Estacionamiento de autoelevadores</h2>
+      <p class="muted">Cada autoelevador tiene estado y mejoras propias. Se desgastan, se pueden romper y mantenimiento también los atiende.</p>
+      <div id="forkliftParking" class="slots"></div>
     </section>
 
     <section class="panel">
@@ -42,42 +48,34 @@
           <h3>🚚 Recepción</h3>
           <div id="incoming"></div>
         </div>
-
         <div class="zone dropzone" data-drop="rawYard">
           <h3>🪵 Playa de troncos</h3>
           <div id="rawYard"></div>
         </div>
-
         <div class="zone wide">
           <h3>🪚 Líneas de corte</h3>
           <div id="cutLines" class="slots"></div>
         </div>
-
         <div class="zone dropzone" data-drop="cutBuffer">
           <h3>🟫 Pilas de troncos</h3>
           <div id="cutBuffer"></div>
         </div>
-
         <div class="zone wide">
           <h3>🧰 Línea artesanal</h3>
           <div id="artisanLine"></div>
         </div>
-
         <div class="zone dropzone" data-drop="artisanYard">
           <h3>✨ Depósito artesanal</h3>
           <div id="artisanYard"></div>
         </div>
-
         <div class="zone wide">
           <h3>📦 Líneas de embalaje</h3>
           <div id="packLines" class="slots pack-slots"></div>
         </div>
-
         <div class="zone dropzone" data-drop="finishedYard">
           <h3>✅ Playa de salida</h3>
           <div id="finishedYard"></div>
         </div>
-
         <div class="zone dropzone" data-drop="dispatchTruck">
           <h3>🚛 Despacho</h3>
           <div id="dispatchTruck"></div>
@@ -93,7 +91,7 @@
 
     <section class="panel">
       <h2>🔧 Mantenimiento</h2>
-      <p class="muted">Las líneas se desgastan con el uso. Una línea en mal estado produce peor calidad y puede romperse.</p>
+      <p class="muted">Líneas y autoelevadores se desgastan con el uso. Los equipos en mal estado pueden romperse.</p>
       <div id="maintenance"></div>
     </section>
 
@@ -101,7 +99,6 @@
       <h2>Futuros sectores</h2>
       <div class="future-grid">
         <button disabled>👔 Supervisor</button>
-        <button disabled>📋 Despachantes</button>
         <button disabled>⛑️ Seguridad e Higiene</button>
         <button disabled>💡 Ingeniería y Desarrollo</button>
       </div>
