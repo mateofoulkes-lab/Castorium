@@ -12,95 +12,120 @@
     <span id="clock">Día 1 · Mañana · 08:00</span>
     <span>🌿 <b id="money">50.000</b></span>
     <span id="boss">Jefe: libre</span>
+    <button id="openPurchase">🛒 Comprar</button>
+    <button id="openHiring">👥 Contratar personal</button>
     <button data-speed="0">⏸</button>
     <button data-speed="1" class="active">▶ x1</button>
     <button data-speed="16">▶▶ x16</button>
     <button data-speed="64">▶▶▶ x64</button>
   </header>
 
-  <section id="tutorial" class="panel"></section>
+  <dialog id="purchaseDialog">
+    <div class="dialog-head"><h2>🛒 Comprar</h2><button id="closePurchase">✕</button></div>
+    <p class="muted">Equipos, líneas y materia prima. Los trabajadores se contratan por separado.</p>
+    <div class="purchase-grid">
+      <button id="buyLogs">🚚 5 troncos<br><b>1.000 🌿</b></button>
+      <button id="buyCutLine">🪚 Línea de corte<br><b>35.000 🌿</b></button>
+      <button id="buyPackLine">📦 Línea de embalaje<br><b>8.000 🌿</b></button>
+      <button id="buyArtisanLine">🪵 Línea artesanal<br><b>18.000 🌿</b></button>
+      <button id="buyForklift">🚜 Autoelevador<br><b>12.000 🌿</b></button>
+    </div>
+  </dialog>
 
-  <main>
-    <section class="panel">
-      <h2>Compras</h2>
-      <button id="buyLogs">🚚 Comprar 5 troncos · 1.000 🌿</button>
-      <button id="buyCutLine">🪚 Comprar línea de corte · 35.000 🌿</button>
-      <button id="buyPackLine">📦 Comprar línea de embalaje · 8.000 🌿</button>
-      <button id="buyArtisanLine">🪵 Comprar línea artesanal · 18.000 🌿</button>
-    </section>
+  <dialog id="hireDialog">
+    <div class="dialog-head"><h2>👥 Contratar personal</h2><button id="closeHiring">✕</button></div>
+    <p class="muted">Al contratar, el castor pasa a tu plantilla de la derecha. Después lo asignás arrastrándolo al puesto.</p>
+    <div id="workers" class="hire-grid"></div>
+  </dialog>
 
-    <section class="panel">
-      <h2>Personal</h2>
-      <p class="muted">Cada línea necesita su propio operador. Máximo: 3 operadores de corte, 2 embaladores y 4 autoelevadoristas. Los sueldos se pagan cada 30 días.</p>
-      <div id="workers" class="worker-grid"></div>
-    </section>
+  <section id="tutorial" class="panel tutorial-panel"></section>
 
-    <section class="panel">
-      <h2>👔 Supervisión</h2>
-      <p class="muted">El supervisor puede reasignar personal y apretar el ritmo de producción. Sirve, pero abusar de eso calienta el gremio.</p>
-      <div id="supervisor"></div>
-    </section>
+  <div class="game-layout">
+    <main>
+      <section class="panel compact-panel">
+        <h2>🧭 Puestos de apoyo</h2>
+        <p class="muted">Arrastrá personal desde la plantilla. Una mala asignación te avisa antes de confirmarla.</p>
+        <div id="supportAssignments" class="support-grid"></div>
+      </section>
 
-    <section class="panel">
-      <h2>🐿️ Gremio de Ardillas</h2>
-      <p class="muted">Automatización, reasignaciones frecuentes y presión productiva aumentan la temperatura gremial. Los reclamos salariales pueden terminar en acuerdo… o en huelga.</p>
-      <div id="union"></div>
-    </section>
+      <section class="panel">
+        <h2>🚜 Estacionamiento de autoelevadores</h2>
+        <p class="muted">Comprás vehículos y conductores por separado. Cada autoelevador tiene estado y mejoras propias.</p>
+        <div id="forkliftParking" class="slots"></div>
+      </section>
 
-    <section class="panel">
-      <h2>🚜 Estacionamiento de autoelevadores</h2>
-      <p class="muted">Cada autoelevador tiene estado y mejoras propias. Se desgastan, se pueden romper y mantenimiento también los atiende.</p>
-      <div id="forkliftParking" class="slots"></div>
-    </section>
+      <section class="panel">
+        <h2>Galpón</h2>
+        <div class="flow">
+          <div class="zone"><h3>🚚 Recepción</h3><div id="incoming"></div></div>
+          <div class="zone dropzone" data-drop="rawYard"><h3>🪵 Playa de troncos</h3><div id="rawYard"></div></div>
+          <div class="zone wide"><h3>🪚 Líneas de corte</h3><div id="cutLines" class="slots"></div></div>
+          <div class="zone dropzone" data-drop="cutBuffer"><h3>🟫 Pilas de troncos</h3><div id="cutBuffer"></div></div>
+          <div class="zone wide"><h3>🧰 Línea artesanal</h3><div id="artisanLine"></div></div>
+          <div class="zone dropzone" data-drop="artisanYard"><h3>✨ Depósito artesanal</h3><div id="artisanYard"></div></div>
+          <div class="zone wide"><h3>📦 Líneas de embalaje</h3><div id="packLines" class="slots pack-slots"></div></div>
+          <div class="zone dropzone" data-drop="finishedYard"><h3>✅ Playa de salida</h3><div id="finishedYard"></div></div>
+          <div class="zone dropzone" data-drop="dispatchTruck"><h3>🚛 Despacho</h3><div id="dispatchTruck"></div></div>
+        </div>
+      </section>
 
-    <section class="panel">
-      <h2>Galpón</h2>
-      <div class="flow">
-        <div class="zone"><h3>🚚 Recepción</h3><div id="incoming"></div></div>
-        <div class="zone dropzone" data-drop="rawYard"><h3>🪵 Playa de troncos</h3><div id="rawYard"></div></div>
-        <div class="zone wide"><h3>🪚 Líneas de corte</h3><div id="cutLines" class="slots"></div></div>
-        <div class="zone dropzone" data-drop="cutBuffer"><h3>🟫 Pilas de troncos</h3><div id="cutBuffer"></div></div>
-        <div class="zone wide"><h3>🧰 Línea artesanal</h3><div id="artisanLine"></div></div>
-        <div class="zone dropzone" data-drop="artisanYard"><h3>✨ Depósito artesanal</h3><div id="artisanYard"></div></div>
-        <div class="zone wide"><h3>📦 Líneas de embalaje</h3><div id="packLines" class="slots pack-slots"></div></div>
-        <div class="zone dropzone" data-drop="finishedYard"><h3>✅ Playa de salida</h3><div id="finishedYard"></div></div>
-        <div class="zone dropzone" data-drop="dispatchTruck"><h3>🚛 Despacho</h3><div id="dispatchTruck"></div></div>
+      <section class="panel">
+        <h2>Pedido actual</h2>
+        <div id="order"></div>
+        <div id="qualityPrices"></div>
+      </section>
+
+      <section class="two-panels">
+        <section class="panel">
+          <h2>👔 Supervisión</h2>
+          <div id="supervisor"></div>
+        </section>
+        <section class="panel">
+          <h2>🐿️ Gremio de Ardillas</h2>
+          <div id="union"></div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <h2>🔧 Mantenimiento</h2>
+        <p class="muted">Los equipos se desgastan y pueden romperse. Automatización avanzada exige capacitación específica.</p>
+        <div id="maintenance"></div>
+      </section>
+
+      <section class="panel">
+        <h2>💡 Ingeniería y Desarrollo</h2>
+        <p class="muted">Desarrolla tecnologías avanzadas y, con el tiempo, aplica mejoras viejas gratis.</p>
+        <div id="engineering"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Futuros sectores</h2>
+        <div class="future-grid">
+          <button disabled>⛑️ Seguridad e Higiene</button>
+          <button disabled>📊 Estadísticas de planta</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Eventos</h2>
+        <div id="log"></div>
+      </section>
+    </main>
+
+    <aside class="roster-panel">
+      <div class="roster-title">
+        <div><h2>🦫 Plantilla</h2><small>Arrastrá un castor al puesto</small></div>
+        <button id="openHiringSide">＋</button>
       </div>
-    </section>
+      <div id="personnelRoster"></div>
+    </aside>
+  </div>
 
-    <section class="panel">
-      <h2>Pedido actual</h2>
-      <div id="order"></div>
-      <div id="qualityPrices"></div>
-    </section>
-
-    <section class="panel">
-      <h2>🔧 Mantenimiento</h2>
-      <p class="muted">Líneas y autoelevadores se desgastan con el uso. Los equipos automatizados requieren capacitación específica para repararlos.</p>
-      <div id="maintenance"></div>
-    </section>
-
-    <section class="panel">
-      <h2>💡 Ingeniería y Desarrollo</h2>
-      <p class="muted">Desarrolla tecnologías avanzadas y, con el tiempo, aplica mejoras viejas gratis o las convierte en estándar.</p>
-      <div id="engineering"></div>
-    </section>
-
-    <section class="panel">
-      <h2>Futuros sectores</h2>
-      <div class="future-grid">
-        <button disabled>⛑️ Seguridad e Higiene</button>
-        <button disabled>📊 Estadísticas de planta</button>
-        <button disabled>🧑‍🏫 Capacitación avanzada</button>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Eventos</h2>
-      <div id="log"></div>
-    </section>
-  </main>
-
-  <script type="module" src="./src/bootstrap-v3.js"></script>
+  <script type="module" src="./src/bootstrap.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelector("#openHiringSide")?.addEventListener("click", () => document.querySelector("#hireDialog")?.showModal());
+    });
+  </script>
 </body>
 </html>
