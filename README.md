@@ -1,6 +1,6 @@
 # Castorium
 
-A low-poly industrial tycoon / clicker prototype starring beavers.
+Industrial tycoon / clicker about beavers running a timber-processing plant.
 
 The core fantasy: start by doing every task manually, then hire workers who automate exactly the jobs you are tired of doing yourself.
 
@@ -19,25 +19,40 @@ Deliberately excluded: energy billing, insurance, taxes, financing and other bus
 
 ## Current prototype
 
-The first playable build uses Three.js with primitive low-poly geometry and a tiny HTML HUD. It is intentionally asset-free so the loop can be tuned before replacing geometry with final models.
+The current build is deliberately **UI-first**: plain HTML/CSS/JavaScript, buttons, drag & drop, icons and progress bars. No final graphical interface and no 3D yet.
+
+The goal is to tune and harden the simulation loop before investing in presentation. A future visual version may use low-poly 3D assets and Three.js, but the simulation should remain independent from rendering.
+
+### Implemented now
+
+- 50,000 starting Ramitas.
+- Buy trucks of 5 logs.
+- Manually drag logs from the truck to the raw-log yard.
+- Three fixed cutting-line slots.
+- Buy cutting lines.
+- Manually load logs into cutting lines.
+- Hold to cut; 10 cuts produce one cut stack.
+- Each log contains 80 cuts / 8 stacks.
+- A cutting line stops while its output is occupied.
+- Intermediate cut-stack yard.
+- Two packaging-line slots.
+- Buy packaging lines.
+- Five manual packaging steps: wrap, corner protectors, strap, label, release.
+- Finished-goods yard.
+- Customer orders.
+- Manually load dispatch trucks and collect Ramitas.
+- Day / shift / time clock with pause and speed controls.
+- Contextual tutorial and event log.
 
 ### Run locally
 
-Because the project uses ES modules, serve the repo with any static HTTP server instead of opening `index.html` directly.
-
-Examples:
+Serve the repository with any static HTTP server, for example:
 
 ```bash
 python -m http.server 8000
 ```
 
-or
-
-```bash
-npx serve .
-```
-
-Then open the local URL shown by the server.
+Then open `http://localhost:8000`.
 
 ## Planned plant slots
 
@@ -51,7 +66,8 @@ Then open the local URL shown by the server.
 - 1 dispatch office
 - 1 safety office
 - 1 engineering & development office
-- future optional support/decorative slots if they add gameplay
+- personnel / hiring access
+- future optional slots only if they create actual gameplay
 
 ## Prototype milestones
 
@@ -60,4 +76,4 @@ Then open the local URL shown by the server.
 - **0.3:** individual workers, aptitudes, absences and supervisor
 - **0.4:** wear, breakdowns and maintenance
 - **0.5:** safety events, engineering discoveries and richer events
-- **0.6:** replace placeholder geometry with proper low-poly assets and polish spatial play
+- **0.6:** visual plant, routes and eventual low-poly assets
