@@ -82,6 +82,71 @@
     }
   }
   </script>
-  <script type="module" src="./src/editor.js"></script>
+  <script type="module">
+    // Built-in editor assets live in the repo but use the same IndexedDB path as user-loaded models.
+    // This keeps editor.js simple and makes the predefined castor behave exactly like any other GLB.
+    const STORAGE_KEY = 'castorium.mapEditor.v1';
+    const DB_NAME = 'castorium-editor-assets';
+    const DB_STORE = 'blobs';
+    const CASTOR_ASSET_ID = 'builtin-castorv2';
+
+    function openEditorDb() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains(DB_STORE)) request.result.createObjectStore(DB_STORE);
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function hasStoredModel(key) {
+      const db = await openEditorDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readonly');
+        const req = tx.objectStore(DB_STORE).get(key);
+        req.onsuccess = () => resolve(Boolean(req.result));
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function storeModel(key, blob) {
+      const db = await openEditorDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put(blob, key);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function preloadBuiltinCastor() {
+      try {
+        const dbKey = 'model:' + CASTOR_ASSET_ID;
+        if (!(await hasStoredModel(dbKey))) {
+          const response = await fetch('./models/castorv2.glb');
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          await storeModel(dbKey, await response.blob());
+        }
+
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch {}
+        saved.assets = Array.isArray(saved.assets) ? saved.assets : [];
+        const existing = saved.assets.find(a => a.id === CASTOR_ASSET_ID);
+        if (existing) {
+          existing.name = '🦫 Castor v2 (predefinido)';
+        } else {
+          saved.assets.unshift({ id: CASTOR_ASSET_ID, name: '🦫 Castor v2 (predefinido)', animations: [], builtin: true });
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+      } catch (error) {
+        console.warn('No se pudo precargar castorv2.glb; el editor seguirá funcionando con placeholders.', error);
+      }
+    }
+
+    await preloadBuiltinCastor();
+    await import('./src/editor.js');
+  </script>
 </body>
 </html>
