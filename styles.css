@@ -58,6 +58,8 @@ main { min-width: 0; display: grid; gap: 12px; }
 .training-row select { min-width:0; flex:1; background:#161c22; color:white; border:1px solid #596571; border-radius:5px; }
 .assignment-slot { margin:-2px -2px 8px; padding:7px; border-radius:5px; background:#28343d; border:1px dashed #72808d; font-size:12px; }
 .staff-drop { transition: border-color .12s, background .12s; }
+.staff-drop-surface { position:relative; z-index:12; pointer-events:auto; min-height:34px; isolation:isolate; }
+.staff-drop-surface::after { content:""; position:absolute; inset:-4px; z-index:-1; border-radius:6px; }
 .staff-dragover { border-color:#d9f4ff !important; background:#34434e !important; box-shadow:inset 0 0 0 2px rgba(255,255,255,.12); }
 .support-grid { display:grid; grid-template-columns:repeat(3,minmax(170px,1fr)); gap:8px; }
 .support-assignment { min-height:58px; background:#1d242a; border:1px dashed #64717e; border-radius:7px; padding:8px; display:flex; flex-direction:column; gap:5px; }
