@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const $=s=>document.querySelector(s);
@@ -10,6 +11,12 @@ const DB_NAME='castorium-editor-assets-v2';
 const DB_STORE='blobs';
 const PRESET_BEAVER_ID='preset-castor-v2';
 const PRESET_BEAVER_URL='./models/castorv2.glb';
+const BEAVER_REPO_ANIMS=[
+  ['Cry','./anim/Cry.fbx'],['Die','./anim/Die.fbx'],['Drive','./anim/Drive.fbx'],['Driving','./anim/Driving.fbx'],
+  ['Drunk Walk','./anim/Drunk%20Walk.fbx'],['Fix','./anim/Fix.fbx'],['Happy','./anim/Happy.fbx'],['Idle','./anim/Idle.fbx'],
+  ['Impatient','./anim/Impatient.fbx'],['Interact','./anim/Interact.fbx'],['Protesting','./anim/Protesting.fbx'],
+  ['Protesting2','./anim/Protesting2.fbx'],['Protesting3','./anim/Protesting3.fbx'],['Walk','./anim/Walk.fbx']
+];
 
 const LAYERS=['structure','machine','vehicle','product','worker','hotspot','zone','ui','helper'];
 const COLORS={structure:0x657382,machine:0x7d8f72,vehicle:0x9a835b,product:0x8e684e,worker:0x7b6e91,hotspot:0xf0b95b,zone:0x557d8a,ui:0xa0697a,helper:0x7b7b7b};
@@ -34,12 +41,12 @@ transform.addEventListener('dragging-changed',e=>orbit.enabled=!e.value);
 scene.add(new THREE.HemisphereLight(0xffffff,0x45505b,2));const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(15,25,12);sun.castShadow=true;scene.add(sun);
 let grid=new THREE.GridHelper(60,60,0x87919c,0x4b555f);scene.add(grid);
 const floorGroup=new THREE.Group();scene.add(floorGroup);const referenceGroup=new THREE.Group();scene.add(referenceGroup);const decalGroup=new THREE.Group();scene.add(decalGroup);const objectGroup=new THREE.Group();scene.add(objectGroup);const routeGroup=new THREE.Group();scene.add(routeGroup);
-const loader=new GLTFLoader();const textureLoader=new THREE.TextureLoader();const clock=new THREE.Clock();
+const loader=new GLTFLoader();const fbxLoader=new FBXLoader();const textureLoader=new THREE.TextureLoader();const clock=new THREE.Clock();
 
 let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,routeGhostInfo=null,currentTileId=null,floorPaint=false,eraseFloorMode=false,selectedDecalId=null,draggingDecal=false,referenceEdit=false,referenceDrag=null;
-const runtime=new Map(),assetRuntime=new Map(),animationRuntime=new Map(),decalRuntime=new Map(),mixers=new Map();
+const runtime=new Map(),assetRuntime=new Map(),animationRuntime=new Map(),repoAnimationRuntime=new Map(),decalRuntime=new Map(),mixers=new Map();
 let selectionBox=null,decalSelectionBox=null;
-function defaultData(){return {version:2.5,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
+function defaultData(){return {version:2.6,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
 function isCharacterKind(kind){return info(kind).group==='Personajes'}
 function uid(p='id'){return p+'-'+Math.random().toString(36).slice(2,9)}
 function t0(){return {position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1}}}
@@ -58,6 +65,13 @@ async function assetInstance(id){const p=await loadAsset(id);const c=SkeletonUti
 async function loadAnimationAsset(id){let p=animationRuntime.get(id);if(p)return p;const a=data.animations.find(x=>x.id===id);if(!a)throw Error('Animación inexistente');const blob=await dbGet('anim:'+id);if(!blob)throw Error('Archivo de animación no disponible');const ab=await blob.arrayBuffer();const gltf=await new Promise((ok,no)=>loader.parse(ab,'',ok,no));p={animations:gltf.animations};animationRuntime.set(id,p);a.clips=gltf.animations.map(x=>x.name||'Clip');return p}
 async function uploadCharacterAnimation(file,kind){const id=uid('anim');await dbPut('anim:'+id,file);const rec={id,kind,name:file.name,clips:[]};data.animations.push(rec);try{await loadAnimationAsset(id)}catch(e){data.animations=data.animations.filter(x=>x.id!==id);alert('No pude leer las animaciones de ese GLB/GLTF: '+e.message);return}saveSoon();renderInspector()}
 async function deleteCharacterAnimation(id){data.animations=data.animations.filter(x=>x.id!==id);animationRuntime.delete(id);const r=selected();if(r?.animation?.startsWith(id+'::'))r.animation=null;saveSoon();renderInspector()}
+async function loadRepoBeaverAnimation(name){
+  if(repoAnimationRuntime.has(name))return repoAnimationRuntime.get(name);
+  const pair=BEAVER_REPO_ANIMS.find(x=>x[0]===name);if(!pair)throw Error('Animación builtin inexistente: '+name);
+  const obj=await new Promise((ok,no)=>fbxLoader.load(pair[1],ok,undefined,no));
+  const clip=obj.animations?.[0];if(!clip)throw Error('El FBX no contiene animación: '+name);
+  clip.name=name;repoAnimationRuntime.set(name,clip);return clip;
+}
 
 function placeholder(kind){const layer=info(kind).layer,g=new THREE.Group();if(layer==='hotspot'||layer==='ui'){const m=new THREE.Mesh(new THREE.SphereGeometry(.2,12,8),new THREE.MeshBasicMaterial({color:COLORS[layer],depthTest:false}));g.add(m);const r=new THREE.Mesh(new THREE.TorusGeometry(.34,.025,8,24),new THREE.MeshBasicMaterial({color:COLORS[layer],depthTest:false}));r.rotation.x=Math.PI/2;g.add(r);return g}let geo;if(kind==='storage_area'||kind==='buffer')geo=new THREE.BoxGeometry(2,.06,2);else if(kind.includes('truck'))geo=new THREE.BoxGeometry(3,1.4,1.5);else if(kind==='forklift')geo=new THREE.BoxGeometry(1.4,1.1,1);else if(kind==='wall')geo=new THREE.BoxGeometry(4,2.5,.18);else if(kind==='column')geo=new THREE.BoxGeometry(.35,3,.35);else geo=new THREE.BoxGeometry(1.7,1,1.4);const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:COLORS[layer],roughness:.8,transparent:kind==='buffer'||kind==='storage_area',opacity:kind==='buffer'||kind==='storage_area'?.38:1}));m.position.y=kind==='buffer'||kind==='storage_area'?0.03:(geo.parameters?.height||1)/2;g.add(m);return g}
 function labelSprite(text){const c=document.createElement('canvas');c.width=512;c.height=96;const x=c.getContext('2d');x.fillStyle='#111c';x.fillRect(0,0,512,96);x.fillStyle='#fff';x.font='30px sans-serif';x.textAlign='center';x.fillText(text,256,58);const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));s.scale.set(3.2,.6,1);s.position.y=1.7;s.userData.editorLabel=true;return s}
@@ -84,11 +98,12 @@ const assets=data.assets.map(a=>`<option value="${a.id}" ${a.id===r.assetId?'sel
 const baseClips=(data.assets.find(a=>a.id===r.assetId)?.animations||[]).map(a=>({value:'base::'+a,label:a}));
 const charAnims=isCharacterKind(r.kind)?data.animations.filter(a=>a.kind===r.kind):[];
 const externalClips=charAnims.flatMap(a=>(a.clips||[]).map(c=>({value:a.id+'::'+c,label:a.name+' · '+c})));
-const clipOptions=[...baseClips,...externalClips].map(a=>`<option value="${esc(a.value)}" ${a.value===r.animation?'selected':''}>${esc(a.label)}</option>`).join('');
+const repoClips=r.kind==='beaver'?BEAVER_REPO_ANIMS.map(([name])=>({value:'repo::'+name,label:'📁 '+name})):[];
+const clipOptions=[...repoClips,...baseClips,...externalClips].map(a=>`<option value="${esc(a.value)}" ${a.value===r.animation?'selected':''}>${esc(a.label)}</option>`).join('');
 let special='';
 if(r.kind==='buffer')special=`<div class="inspector-block"><h4>Buffer paramétrico</h4><div class="kv"><span>Cantidad</span><input id="bufCount" type="number" min="1" max="30" value="${r.meta.count}"></div><div class="inspector-grid"><label>Offset</label><input class="bo" data-a="x" type="number" step=".1" value="${r.meta.offset.x}"><input class="bo" data-a="y" type="number" step=".1" value="${r.meta.offset.y}"><input class="bo" data-a="z" type="number" step=".1" value="${r.meta.offset.z}"></div></div>`;
 let characterBlock='';
-if(isCharacterKind(r.kind)) characterBlock=`<div class="inspector-block"><h4>🎞 Animaciones de ${esc(info(r.kind).label)}</h4><label class="file-button wide">Cargar animación GLB / GLTF<input id="characterAnimUpload" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label><small class="muted">Se guardan sólo para este tipo de personaje. El archivo puede contener sólo rig + animación.</small><div class="character-animation-list">${charAnims.map(a=>`<div class="asset-row"><span class="asset-name">${esc(a.name)}</span><small>${(a.clips||[]).length} clips</small><button data-del-char-anim="${a.id}">×</button></div>`).join('')||'<div class="muted">Todavía no cargaste animaciones para este personaje.</div>'}</div></div>`;
+if(isCharacterKind(r.kind)) characterBlock=`<div class="inspector-block"><h4>🎞 Animaciones de ${esc(info(r.kind).label)}</h4>${r.kind==='beaver'?`<small class="muted">📁 ${BEAVER_REPO_ANIMS.length} previews precargadas desde /anim. Elegilas arriba en “Animación preview”.</small>`:`<label class="file-button wide">Cargar animación GLB / GLTF<input id="characterAnimUpload" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label><small class="muted">Se guardan sólo para este tipo de personaje. El archivo puede contener sólo rig + animación.</small>`}<div class="character-animation-list">${charAnims.map(a=>`<div class="asset-row"><span class="asset-name">${esc(a.name)}</span><small>${(a.clips||[]).length} clips</small><button data-del-char-anim="${a.id}">×</button></div>`).join('')||(r.kind==='beaver'?'<div class="muted">Podés sumar clips manuales si alguna vez hace falta.</div>':'<div class="muted">Todavía no cargaste animaciones para este personaje.</div>')}</div></div>`;
 $('#inspector').innerHTML=`<div class="kv"><span>Nombre</span><input id="objName" value="${esc(r.name)}"></div><div class="kv"><span>Modelo</span><select id="objAsset"><option value="">Placeholder</option>${assets}</select></div>${clipOptions?`<div class="kv"><span>Animación preview</span><select id="objAnim"><option value="">Sin preview</option>${clipOptions}</select></div>`:''}<div class="inspector-block"><h4>Transform</h4><div class="inspector-grid"><span></span><b>X</b><b>Y</b><b>Z</b>${num('Pos','position','x',r.transform.position.x)}${num('','position','y',r.transform.position.y)}${num('','position','z',r.transform.position.z)}${num('Rot°','rotation','x',THREE.MathUtils.radToDeg(r.transform.rotation.x))}${num('','rotation','y',THREE.MathUtils.radToDeg(r.transform.rotation.y))}${num('','rotation','z',THREE.MathUtils.radToDeg(r.transform.rotation.z))}${num('Esc','scale','x',r.transform.scale.x)}${num('','scale','y',r.transform.scale.y)}${num('','scale','z',r.transform.scale.z)}</div></div>${special}${characterBlock}<div class="row"><button id="dupObj">Shift+D Duplicar</button><button id="delObj">Delete</button></div>`;
 $('#objName').onchange=e=>{r.name=e.target.value;const old=runtime.get(r.id);old?.children.filter(x=>x.userData.editorLabel).forEach(x=>old.remove(x));old?.add(labelSprite(r.name));saveSoon();renderTree()};
 $('#objAsset').onchange=async e=>{r.assetId=e.target.value||null;r.animation=null;await instantiate(r);select(r.id);saveSoon()};
@@ -99,7 +114,19 @@ if(r.kind==='buffer'){ $('#bufCount').onchange=e=>{r.meta.count=+e.target.value;
 $('#characterAnimUpload')?.addEventListener('change',e=>e.target.files[0]&&uploadCharacterAnimation(e.target.files[0],r.kind));
 document.querySelectorAll('[data-del-char-anim]').forEach(b=>b.onclick=()=>deleteCharacterAnimation(b.dataset.delCharAnim));
 }
-async function playAnimation(id,key){mixers.delete(id);if(!key)return;const o=runtime.get(id);if(!o)return;let clip=null;if(key.startsWith('base::')){const name=key.slice(6);clip=(o.userData.editorAnimations||[]).find(c=>c.name===name)}else{const split=key.indexOf('::');if(split>0){const aid=key.slice(0,split),name=key.slice(split+2);const p=await loadAnimationAsset(aid);clip=p.animations.find(c=>c.name===name)||p.animations[0]}}if(!clip)return;const m=new THREE.AnimationMixer(o);m.clipAction(clip).reset().play();mixers.set(id,m)}
+async function playAnimation(id,key){
+  const old=mixers.get(id);if(old){old.stopAllAction();mixers.delete(id)}
+  if(!key)return;const o=runtime.get(id);if(!o)return;let clip=null;
+  if(key.startsWith('repo::')){
+    clip=await loadRepoBeaverAnimation(key.slice(6));
+  }else if(key.startsWith('base::')){
+    const name=key.slice(6);clip=(o.userData.editorAnimations||[]).find(c=>c.name===name);
+  }else{
+    const split=key.indexOf('::');if(split>0){const aid=key.slice(0,split),name=key.slice(split+2);const p=await loadAnimationAsset(aid);clip=p.animations.find(c=>c.name===name)||p.animations[0]}
+  }
+  if(!clip)return;
+  const m=new THREE.AnimationMixer(o);m.clipAction(clip).reset().play();mixers.set(id,m);
+}
 
 function renderAssetLibrary(){$('#assetLibrary').innerHTML=data.assets.map(a=>`<div class="asset-row"><span class="asset-name">${esc(a.name)}</span><small>${(a.animations||[]).length} anim</small>${a.preset?'':'<button data-del="'+a.id+'">×</button>'}</div>`).join('');document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const id=b.dataset.del;data.assets=data.assets.filter(a=>a.id!==id);data.objects.filter(o=>o.assetId===id).forEach(o=>{o.assetId=null;instantiate(o)});assetRuntime.delete(id);saveSoon();renderAll()})}
 async function uploadModel(file){const id=uid('asset');await dbPut('model:'+id,file);data.assets.push({id,name:file.name,animations:[]});try{await loadAsset(id)}catch(e){alert('No pude leer ese GLB/GLTF: '+e.message)}saveSoon();renderAll()}
@@ -233,7 +260,7 @@ function renderFloorControls(){
 }
 function floorPointFromEvent(e){const ray=rayFromEvent(e),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),p=new THREE.Vector3();return ray.ray.intersectPlane(plane,p)?p:null}
 function copyFloorConfig(){
-  const out={version:'2.5',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
+  const out={version:'2.6',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
   navigator.clipboard.writeText(JSON.stringify(out,null,2)).then(()=>alert('Configuración del piso copiada. Pegámela en el chat cuando quieras hardcodearla.'));
 }
 async function uploadTile(file){const id=uid('tile');await dbPut('tile:'+id,file);data.tiles.push({id,name:file.name});currentTileId=id;saveSoon();renderTiles()}
