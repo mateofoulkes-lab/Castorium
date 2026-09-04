@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Castorium · Yale + Castor GLB Builder</title>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:#15191e;color:#eee;display:grid;grid-template-rows:auto 1fr;height:100vh}
+header{display:flex;gap:10px;align-items:center;padding:10px 12px;background:#0f1317;border-bottom:1px solid #39434d}
+button{background:#2f3943;color:#fff;border:1px solid #5d6975;border-radius:6px;padding:8px 12px;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+#status{font-size:12px;opacity:.8}
+#viewport{min-height:0}
+canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<header>
+<strong>🦫 Yale + Castor Drive</strong>
+<button id="exportBtn" disabled>Generar yale_castor_drive.glb</button>
+<span id="status">Cargando…</span>
+</header>
+<div id="viewport"></div>
+<script type="importmap">
+{
+  "imports":{
+    "three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="./src/build-yale-castor.js"></script>
+</body>
+</html>
