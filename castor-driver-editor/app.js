@@ -127,7 +127,7 @@ async function loadScene() {
     castorModel = prepareModel(castorGLTF.scene, { feetCenter: true });
     yalePivot.add(yaleModel);
     castorPivot.add(castorModel);
-    restore();
+    if (!restore()) setSuggestedStart();
     syncInputs();
     frameScene();
     setStatus('Modelos listos', 'ok');
@@ -213,6 +213,21 @@ function frameScene() {
   orbit.update();
 }
 
+function setSuggestedStart() {
+  const yaleBox = new THREE.Box3().setFromObject(yalePivot);
+  const castorBox = new THREE.Box3().setFromObject(castorPivot);
+  const yaleSize = yaleBox.getSize(new THREE.Vector3());
+  const castorSize = castorBox.getSize(new THREE.Vector3());
+  if (!yaleSize.y || !castorSize.y) return;
+
+  const suggestedScale = yaleSize.y * 0.52 / castorSize.y;
+  const visibleCastorWidth = castorSize.x * suggestedScale;
+  DEFAULT_TRANSFORM.scale = [suggestedScale, suggestedScale, suggestedScale];
+  DEFAULT_TRANSFORM.position = [yaleBox.max.x + visibleCastorWidth * 0.72, 0, 0];
+  castorPivot.scale.fromArray(DEFAULT_TRANSFORM.scale);
+  castorPivot.position.fromArray(DEFAULT_TRANSFORM.position);
+}
+
 function round(value, digits = 4) {
   return Number(value.toFixed(digits));
 }
@@ -276,12 +291,16 @@ function persist() {
 function restore() {
   try {
     const saved = JSON.parse(localStorage.getItem('castorium-driver-fit-v1'));
-    if (!saved) return;
+    if (!saved) return false;
     castorPivot.position.fromArray(saved.position || DEFAULT_TRANSFORM.position);
     castorPivot.rotation.set(...(saved.rotationDegrees || DEFAULT_TRANSFORM.rotationDegrees).map(THREE.MathUtils.degToRad));
     castorPivot.scale.fromArray(saved.scale || DEFAULT_TRANSFORM.scale);
     if (saved.animationSpeed) document.querySelector('#animationSpeed').value = saved.animationSpeed;
-  } catch (error) { console.warn('No se pudo restaurar el ajuste anterior.', error); }
+    return true;
+  } catch (error) {
+    console.warn('No se pudo restaurar el ajuste anterior.', error);
+    return false;
+  }
 }
 
 function resetTransform() {
