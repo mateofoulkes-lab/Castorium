@@ -12,7 +12,9 @@ const lerp = THREE.MathUtils.lerp;
 const rad = THREE.MathUtils.degToRad;
 const TAU = Math.PI * 2;
 const SAVE_KEY = 'castorium-fork-forest-v1';
-const HEX_RADIUS = 5;
+const HEX_RADIUS = 20;
+const TILE_CONTENT_SPREAD = 4;
+const PLAYER_VISUAL_SCALE = .5;
 const TILE_Y = .34;
 const PATHS = {
   yale: '../models/yale.glb',
@@ -34,28 +36,35 @@ const DRIVER_FIT = {
   scale: [30, 30, 30]
 };
 
+const WOOD_TYPES = {
+  pine:{ id:'pine', name:'Pino', short:'PIN', icon:'🌲' },
+  birch:{ id:'birch', name:'Abedul', short:'ABE', icon:'◻' },
+  hardwood:{ id:'hardwood', name:'Madera dura', short:'DUR', icon:'◆' },
+  ancient:{ id:'ancient', name:'Madera ancestral', short:'ANT', icon:'✦' }
+};
+
 const BIOMES = [
-  { id:'pine', name:'Pinar Miel', color:0x70bd78, edge:0x327253, leaf:0x3f9a65, trunk:0x96542e, value:4, regrow:16, tree:'tallTree', icon:'🌲' },
-  { id:'birch', name:'Claro de Abedules', color:0xa9d786, edge:0x5b8f60, leaf:0x8bc66d, trunk:0xe8dfc0, value:6, regrow:18, tree:'roundTree', icon:'🌳' },
-  { id:'berry', name:'Arboleda Baya', color:0xc790bd, edge:0x78537f, leaf:0xa44e83, trunk:0x80503b, value:9, regrow:22, tree:'roundTree', icon:'🍒' },
-  { id:'marsh', name:'Juncal Turquesa', color:0x63c2aa, edge:0x267b73, leaf:0x3c9b72, trunk:0x7e5c36, value:12, regrow:25, tree:'tallTree', icon:'🌿' },
-  { id:'amber', name:'Bosque Ámbar', color:0xe3a65e, edge:0x9a5d3f, leaf:0xd27c45, trunk:0x6f4934, value:17, regrow:29, tree:'roundTree', icon:'🍁' },
-  { id:'moon', name:'Sauces Lunares', color:0x8e91cf, edge:0x55588f, leaf:0x8175ca, trunk:0xb9b5c9, value:24, regrow:34, tree:'tallTree', icon:'✨' }
+  { id:'pine', name:'Pinar Miel', woodType:'pine', color:0x70bd78, edge:0x327253, leaf:0x3f9a65, trunk:0x96542e, value:4, regrow:16, tree:'tallTree', icon:'🌲' },
+  { id:'birch', name:'Claro de Abedules', woodType:'birch', color:0xa9d786, edge:0x5b8f60, leaf:0x8bc66d, trunk:0xe8dfc0, value:6, regrow:18, tree:'roundTree', icon:'🌳' },
+  { id:'berry', name:'Arboleda Baya', woodType:'hardwood', color:0xc790bd, edge:0x78537f, leaf:0xa44e83, trunk:0x80503b, value:9, regrow:22, tree:'roundTree', icon:'🍒' },
+  { id:'marsh', name:'Juncal Turquesa', woodType:'hardwood', color:0x63c2aa, edge:0x267b73, leaf:0x3c9b72, trunk:0x7e5c36, value:12, regrow:25, tree:'tallTree', icon:'🌿' },
+  { id:'amber', name:'Bosque Ámbar', woodType:'ancient', color:0xe3a65e, edge:0x9a5d3f, leaf:0xd27c45, trunk:0x6f4934, value:17, regrow:29, tree:'roundTree', icon:'🍁' },
+  { id:'moon', name:'Sauces Lunares', woodType:'ancient', color:0x8e91cf, edge:0x55588f, leaf:0x8175ca, trunk:0xb9b5c9, value:24, regrow:34, tree:'tallTree', icon:'✨' }
 ];
 
 const UPGRADE_DEFS = [
   { id:'capacity', icon:'╫', name:'Horquillas anchas', text:'Un tronco extra por viaje.', base:22, max:8 },
   { id:'speed', icon:'↯', name:'Motor alegre', text:'+16% de velocidad máxima.', base:26, max:9 },
-  { id:'value', icon:'✦', name:'Corte preciso', text:'+25% de madera por entrega.', base:30, max:10 },
-  { id:'magnet', icon:'∩', name:'Imán de corteza', text:'Los troncos vuelan hacia las horquillas.', base:34, max:7 },
-  { id:'regrow', icon:'♧', name:'Lluvia paciente', text:'El bosque vuelve 12% más rápido.', base:38, max:7 },
-  { id:'golden', icon:'✺', name:'Anillos dorados', text:'+4% de árboles dorados.', base:48, max:6 },
+  { id:'value', icon:'✦', name:'Corte preciso', text:'+25% de madera por entrega.', base:30, max:10, requiresWood:'birch' },
+  { id:'magnet', icon:'∩', name:'Imán de corteza', text:'Los troncos vuelan hacia las horquillas.', base:34, max:7, requiresWood:'birch' },
+  { id:'regrow', icon:'♧', name:'Lluvia paciente', text:'El bosque vuelve 12% más rápido.', base:38, max:7, requiresWood:'hardwood' },
+  { id:'golden', icon:'✺', name:'Anillos dorados', text:'+4% de árboles dorados.', base:48, max:6, requiresWood:'ancient' },
   { id:'combo', icon:'×', name:'Racha larga', text:'+1.5 s para conservar el combo.', base:44, max:6 },
-  { id:'auto', icon:'A', name:'Capataz Castor', text:'Desbloquea el piloto automático.', base:65, max:1 },
-  { id:'mill', icon:'⚙', name:'Sierra gemela', text:'+12% de duplicar una entrega.', base:58, max:7 },
-  { id:'power', icon:'◆', name:'Miel concentrada', text:'Los power-ups duran 20% más.', base:55, max:6 },
-  { id:'fleet', icon:'F', name:'Compañero de turno', text:'Suma un autoelevador ayudante.', base:115, max:4 },
-  { id:'offline', icon:'☾', name:'Turno nocturno', text:'+35% de producción al volver.', base:70, max:6 }
+  { id:'auto', icon:'A', name:'Capataz Castor', text:'Desbloquea el piloto automático.', base:65, max:1, requiresWood:'hardwood' },
+  { id:'mill', icon:'⚙', name:'Sierra gemela', text:'+12% de duplicar una entrega.', base:58, max:7, requiresWood:'hardwood' },
+  { id:'power', icon:'◆', name:'Miel concentrada', text:'Los power-ups duran 20% más.', base:55, max:6, requiresWood:'ancient' },
+  { id:'fleet', icon:'F', name:'Compañero de turno', text:'Suma un autoelevador ayudante.', base:115, max:4, requiresWood:'ancient' },
+  { id:'offline', icon:'☾', name:'Turno nocturno', text:'+35% de producción al volver.', base:70, max:6, requiresWood:'birch' }
 ];
 
 const MISSIONS = [
@@ -70,7 +79,7 @@ const MISSIONS = [
 ];
 
 const defaultState = () => ({
-  wood:0, stars:0, level:1, xp:0, shift:1, shiftLeft:62,
+  wood:0, woodByType:{pine:0,birch:0,hardwood:0,ancient:0}, stars:0, level:1, xp:0, shift:1, shiftLeft:62,
   cargo:[], delivered:0, earned:0, expanded:0, upgradesBought:0,
   missionIndex:0, missionBase:0, unlocked:['0,0'],
   upgrades:Object.fromEntries(UPGRADE_DEFS.map(u => [u.id, 0])),
@@ -83,8 +92,8 @@ try { pendingSave = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch {}
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xa6ded8);
-scene.fog = new THREE.FogExp2(0xa6ded8, .014);
-const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, .1, 180);
+scene.fog = new THREE.FogExp2(0xa6ded8, .004);
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, .1, 700);
 camera.position.set(15, 17, 20);
 const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.8));
@@ -105,7 +114,7 @@ const orbit = new OrbitControls(camera, renderer.domElement);
 orbit.enableDamping = true;
 orbit.enablePan = false;
 orbit.minDistance = 11;
-orbit.maxDistance = 44;
+orbit.maxDistance = 190;
 orbit.minPolarAngle = rad(32);
 orbit.maxPolarAngle = rad(67);
 orbit.target.set(0, 0, 0);
@@ -115,16 +124,16 @@ const sun = new THREE.DirectionalLight(0xfff2cb, 4.4);
 sun.position.set(-12, 22, 10);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -35; sun.shadow.camera.right = 35;
-sun.shadow.camera.top = 35; sun.shadow.camera.bottom = -35;
-sun.shadow.camera.near = 1; sun.shadow.camera.far = 80;
+sun.shadow.camera.left = -150; sun.shadow.camera.right = 150;
+sun.shadow.camera.top = 150; sun.shadow.camera.bottom = -150;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 260;
 sun.shadow.bias = -.00015;
 scene.add(sun);
 const fill = new THREE.DirectionalLight(0x9ae7d3, 1.2);
 fill.position.set(14, 8, -12); scene.add(fill);
 
 const waterUniforms = { uTime:{value:0}, uSun:{value:new THREE.Vector3(-1,.8,.4)} };
-const water = new THREE.Mesh(new THREE.PlaneGeometry(260,260,80,80), new THREE.ShaderMaterial({
+const water = new THREE.Mesh(new THREE.PlaneGeometry(1000,1000,80,80), new THREE.ShaderMaterial({
   uniforms:waterUniforms, transparent:true,
   vertexShader:`uniform float uTime; varying float vWave; varying vec2 vUv; void main(){vUv=uv;vec3 p=position;float w=sin(p.x*.23+uTime*.7)*.11+cos(p.y*.19-uTime*.55)*.09;p.z+=w;vWave=w;gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);}`,
   fragmentShader:`uniform float uTime; varying float vWave; varying vec2 vUv; void main(){float bands=.5+.5*sin((vUv.x+vUv.y)*95.+uTime*.7);vec3 deep=vec3(.20,.57,.62);vec3 light=vec3(.45,.82,.78);vec3 c=mix(deep,light,.45+vWave*1.9);c+=bands*.018;gl_FragColor=vec4(c,.93);}`
@@ -197,8 +206,7 @@ class SoundGarden {
 }
 const audio = new SoundGarden();
 
-function loadGLTF(url){ return new Promise((resolve,reject)=>gltfLoader.load(url,resolve,undefined,reject)); }
-function loadFBX(url){ return new Promise((resolve,reject)=>fbxLoader.load(url,resolve,undefined,reject)); }
+function loadGLTF(url){ return new Promise((resolve,reject)=>gltfLoader.load(url,resolve,undefined,reject)); }function loadFBX(url){ return new Promise((resolve,reject)=>fbxLoader.load(url,resolve,undefined,reject)); }
 function key(q,r){ return `${q},${r}`; }
 function parseKey(value){ return value.split(',').map(Number); }
 function hexPosition(q,r){ return new THREE.Vector3(Math.sqrt(3)*HEX_RADIUS*(q+r/2),0,1.5*HEX_RADIUS*r); }
@@ -224,8 +232,10 @@ const tileGeometry=hexGeometry(HEX_RADIUS-.28,.62);
 const edgeGeometry=hexGeometry(HEX_RADIUS-.08,.62);
 const lockGeometry=hexGeometry(HEX_RADIUS-.35,.34);
 const particleGeometry=new THREE.IcosahedronGeometry(.1,0);
-const logGeometry=new THREE.CylinderGeometry(.26,.29,1.25,8,1,false);
+const logGeometry=new THREE.CylinderGeometry(.13,.145,.625,8,1,false);
 logGeometry.rotateZ(Math.PI/2);
+const cargoLogGeometry=new THREE.CylinderGeometry(.26,.29,1.25,8,1,false);
+cargoLogGeometry.rotateZ(Math.PI/2);
 const stumpGeometry=new THREE.CylinderGeometry(.42,.5,.28,8);
 
 function makeTextSprite(text,color='#fff7d0',scale=1){
@@ -237,8 +247,7 @@ function makeTextSprite(text,color='#fff7d0',scale=1){
 
 function cloneProp(name,height,tint=null){
   const source=assetTemplates[name]; if(!source)return null;
-  const model=source.clone(true); normalizeFeet(model); normalizeHeight(model,height); shadows(model);
-  if(tint!==null) model.traverse(o=>{if(o.isMesh&&o.material){o.material=o.material.clone();o.material.color.lerp(new THREE.Color(tint),.34);}});
+  const model=source.clone(true); normalizeFeet(model); normalizeHeight(model,height); shadows(model);  if(tint!==null) model.traverse(o=>{if(o.isMesh&&o.material){o.material=o.material.clone();o.material.color.lerp(new THREE.Color(tint),.34);}});
   return model;
 }
 
@@ -277,7 +286,7 @@ function refreshLockedLabels(){ lockedTiles.forEach(tile=>{tile.group.remove(til
 function decorateTile(tile){
   const {group,biome,q,r}=tile;
   for(let i=0;i<5;i++){
-    const angle=seeded(q,r,i+30)*TAU,radial=3.2+seeded(q,r,i+50)*.9;let prop;
+    const angle=seeded(q,r,i+30)*TAU,radial=(3.2+seeded(q,r,i+50)*.9)*TILE_CONTENT_SPREAD;let prop;
     if(biome.id==='marsh')prop=cloneProp('reeds',.65,biome.leaf);else if(i%3===0)prop=cloneProp('bush',.55,biome.leaf);else prop=cloneProp('rock',.32,biome.edge);
     if(!prop)continue;prop.position.set(Math.cos(angle)*radial,TILE_Y+.38,Math.sin(angle)*radial);prop.rotation.y=seeded(q,r,i+90)*TAU;group.add(prop);
   }
@@ -286,7 +295,7 @@ function decorateTile(tile){
 function spawnResources(tile){
   const count=tile.key==='0,0'?6:5+Math.floor(seeded(tile.q,tile.r,90)*3);
   for(let i=0;i<count;i++){
-    const a=seeded(tile.q,tile.r,i+2)*TAU,rr=1.35+seeded(tile.q,tile.r,i+12)*2.3;
+    const a=seeded(tile.q,tile.r,i+2)*TAU,rr=(1.35+seeded(tile.q,tile.r,i+12)*2.3)*TILE_CONTENT_SPREAD;
     const local=new THREE.Vector3(Math.cos(a)*rr,TILE_Y+.44,Math.sin(a)*rr);
     if(tile.key==='0,0'&&local.length()<2)local.multiplyScalar(1.5);
     const height=1.75+seeded(tile.q,tile.r,i+18)*1.15;
@@ -330,7 +339,7 @@ function createPlayer(yaleGLTF,castorGLTF,drivingFBX){
   const yale=normalizeFeet(shadows(yaleGLTF.scene));vehicle.add(yale);
   const driverPivot=new THREE.Group(),castor=normalizeFeet(shadows(castorGLTF.scene));driverPivot.add(castor);vehicle.add(driverPivot);
   driverPivot.position.fromArray(DRIVER_FIT.position);driverPivot.rotation.set(...DRIVER_FIT.rotationDegrees.map(rad));driverPivot.scale.fromArray(DRIVER_FIT.scale);
-  vehicle.scale.setScalar(.57);
+  vehicle.scale.setScalar(.57*PLAYER_VISUAL_SCALE);
   const mixer=new THREE.AnimationMixer(castor),clip=drivingFBX.animations?.[0]||castorGLTF.animations?.[0];if(clip){mixer.clipAction(clip).play();mixers.push(mixer)}
   const glow=new THREE.PointLight(0xffb449,.58,3.2,2);glow.position.set(0,1.1,1.35);visual.add(glow);
   const targetRing=new THREE.Mesh(new THREE.RingGeometry(.45,.6,28),new THREE.MeshBasicMaterial({color:0xffdb73,transparent:true,opacity:.7,side:THREE.DoubleSide}));targetRing.rotation.x=-Math.PI/2;targetRing.visible=false;scene.add(targetRing);
@@ -350,7 +359,7 @@ function createHelper(index){
 }
 
 function rebuildCargo(){
-  if(!player)return;player.cargoGroup.clear();state.cargo.forEach((value,i)=>{const log=new THREE.Mesh(logGeometry,new THREE.MeshStandardMaterial({color:0xa85d31,roughness:.88}));log.position.set((i%2-.5)*.48,.65+Math.floor(i/2)*.34,1.86);log.rotation.y=(i%2)*.1;log.castShadow=true;player.cargoGroup.add(log)});renderCargo();
+  if(!player)return;player.cargoGroup.clear();state.cargo.forEach((value,i)=>{const log=new THREE.Mesh(cargoLogGeometry,new THREE.MeshStandardMaterial({color:0xa85d31,roughness:.88}));log.position.set((i%2-.5)*.48,.65+Math.floor(i/2)*.34,1.86);log.rotation.y=(i%2)*.1;log.castShadow=true;player.cargoGroup.add(log)});renderCargo();
 }
 
 async function loadAssets(){
@@ -382,7 +391,7 @@ function frameTerritory(){
   scene.updateMatrixWorld(true);
   const box=new THREE.Box3();tiles.forEach(tile=>box.expandByObject(tile.group));lockedTiles.forEach(tile=>box.expandByObject(tile.mesh));if(box.isEmpty())return;
   const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());cameraGoal.copy(center);orbit.target.copy(center);
-  const max=Math.max(size.x,size.z,10),distance=clamp(max*1.35,17,42);const dir=new THREE.Vector3(.65,.72,.8).normalize();camera.position.copy(center).addScaledVector(dir,distance);orbit.update();
+  const max=Math.max(size.x,size.z,10),distance=clamp(max*1.35,46,180);const dir=new THREE.Vector3(.65,.72,.8).normalize();camera.position.copy(center).addScaledVector(dir,distance);orbit.update();
 }
 
 function tween(target,to,duration=.4,ease='out',done=null){
@@ -397,9 +406,8 @@ function burst(position,color=0xffffff,count=12,speed=1){
 function floatText(text,position,color='#fff4bd',scale=1){const sprite=makeTextSprite(text,color,.75*scale);sprite.position.copy(position).add(new THREE.Vector3(0,1.7,0));scene.add(sprite);floats.push({sprite,age:0,life:1.15});}
 function toast(html){const el=document.createElement('div');el.className='toast';el.innerHTML=html;$('#toastLayer').appendChild(el);setTimeout(()=>el.remove(),1700)}
 
-function spawnLogs(tree){
-  const count=tree.golden?4:2+(Math.random()<.28?1:0);const world=tree.group.getWorldPosition(new THREE.Vector3());
-  for(let i=0;i<count;i++){const mesh=new THREE.Mesh(logGeometry,new THREE.MeshStandardMaterial({color:tree.golden?0xd99627:tree.tile.biome.trunk,roughness:.88,emissive:tree.golden?0xff9b19:0,emissiveIntensity:tree.golden?.25:0}));mesh.position.copy(world).add(new THREE.Vector3((Math.random()-.5)*.4,.55,(Math.random()-.5)*.4));mesh.rotation.y=Math.random()*TAU;mesh.castShadow=true;scene.add(mesh);logs.push({mesh,value:tree.value,age:0,velocity:new THREE.Vector3((Math.random()-.5)*2,1.8+Math.random(),(Math.random()-.5)*2)});}
+function spawnLogs(tree){  const count=tree.golden?4:2+(Math.random()<.28?1:0);const world=tree.group.getWorldPosition(new THREE.Vector3());
+  for(let i=0;i<count;i++){const mesh=new THREE.Mesh(logGeometry,new THREE.MeshStandardMaterial({color:tree.golden?0xd99627:tree.tile.biome.trunk,roughness:.88,emissive:tree.golden?0xff9b19:0,emissiveIntensity:tree.golden?.25:0}));mesh.position.copy(world).add(new THREE.Vector3((Math.random()-.5)*.4,.55,(Math.random()-.5)*.4));mesh.rotation.y=Math.random()*TAU;mesh.castShadow=true;scene.add(mesh);logs.push({mesh,value:tree.value,woodType:tree.tile.biome.woodType,age:0,velocity:new THREE.Vector3((Math.random()-.5)*2,1.8+Math.random(),(Math.random()-.5)*2)});}
 }
 
 function harvestTree(tree){
@@ -410,14 +418,20 @@ function harvestTree(tree){
 }
 
 function collectLog(log){
-  if(state.cargo.length>=capacity())return;const index=logs.indexOf(log);if(index>=0)logs.splice(index,1);scene.remove(log.mesh);state.cargo.push(log.value);audio.pickup();comboHit();burst(player.group.position.clone().setY(1),0xffc45d,7,.8);floatText('+ TRONCO',player.group.position,'#ffe39a',.62);rebuildCargo();
+  if(state.cargo.length>=capacity())return;const index=logs.indexOf(log);if(index>=0)logs.splice(index,1);scene.remove(log.mesh);state.cargo.push({value:log.value,woodType:log.woodType||'pine'});audio.pickup();comboHit();burst(player.group.position.clone().setY(1),0xffc45d,7,.8);floatText('+ TRONCO',player.group.position,'#ffe39a',.62);rebuildCargo();
 }
 
 function deliverCargo(){
   if(!state.cargo.length||player.deliveryCooldown>0)return;player.deliveryCooldown=.7;
-  const raw=state.cargo.reduce((a,b)=>a+b,0),double=Math.random()<state.upgrades.mill*.12?2:1,power=activePower?.id==='double'?2:1;
-  const gain=Math.round(raw*valueMultiplier()*combo*double*power);const count=state.cargo.length;state.wood+=gain;state.earned+=gain;state.delivered+=count;state.cargo=[];
-  addXp(count*5+Math.round(gain*.08));missionEvent('deliver',count);missionEvent('earn',gain);audio.deliver();burst(depot.position.clone().setY(1),0xffd55f,24,2.4);floatText(`+${gain} MADERA`,depot.position,'#ffe277',1.12);if(double>1)toast('⚙️ <strong>Sierra gemela</strong> duplicó la carga');rebuildCargo();updateHUD();saveGame();
+  const normalized=state.cargo.map(item=>typeof item==='number'?{value:item,woodType:'pine'}:item);
+  const raw=normalized.reduce((a,b)=>a+b.value,0),double=Math.random()<state.upgrades.mill*.12?2:1,power=activePower?.id==='double'?2:1;
+  const gain=Math.round(raw*valueMultiplier()*combo*double*power),count=normalized.length;
+  const newlyUnlocked=[];
+  normalized.forEach(item=>{const type=item.woodType||'pine';const before=state.woodByType[type]||0;state.woodByType[type]=before+item.value;if(before<=0&&state.woodByType[type]>0)newlyUnlocked.push(type)});
+  state.wood+=gain;state.earned+=gain;state.delivered+=count;state.cargo=[];
+  addXp(count*5+Math.round(gain*.08));missionEvent('deliver',count);missionEvent('earn',gain);audio.deliver();burst(depot.position.clone().setY(1),0xffd55f,24,2.4);floatText(`+${gain} MADERA`,depot.position,'#ffe277',1.12);
+  newlyUnlocked.forEach(type=>{const wood=WOOD_TYPES[type];if(wood)toast(`${wood.icon} Nueva madera: <strong>${wood.name}</strong> · nuevas mejoras disponibles`)});
+  if(double>1)toast('⚙️ <strong>Sierra gemela</strong> duplicó la carga');rebuildCargo();updateHUD();saveGame();
 }
 
 function comboHit(){comboTimer=6+state.upgrades.combo*1.5;combo=clamp(combo+1,1,8);if(combo>=5&&combo-1<5){bloomPass.strength=.52;toast('🔥 <strong>RACHA DEL DIQUE</strong>');}renderCombo();}
@@ -437,7 +451,7 @@ function addXp(amount){
 }
 
 function spawnPowerup(){
-  if(powerups.length||!tiles.size)return;const tile=[...tiles.values()][Math.floor(Math.random()*tiles.size)],a=Math.random()*TAU,r=1+Math.random()*2.6;
+  if(powerups.length||!tiles.size)return;const tile=[...tiles.values()][Math.floor(Math.random()*tiles.size)],a=Math.random()*TAU,r=(1+Math.random()*2.6)*TILE_CONTENT_SPREAD;
   const types=[{id:'turbo',name:'TURBO MIEL',color:0xffa43f,icon:'⚡'},{id:'magnet',name:'IMÁN DE RÍO',color:0x67d0d5,icon:'🧲'},{id:'double',name:'DOBLE CORTE',color:0xb18be8,icon:'✦'},{id:'rain',name:'LLUVIA VERDE',color:0x65cf83,icon:'☂'}],type=types[Math.floor(Math.random()*types.length)];
   const group=new THREE.Group(),gem=new THREE.Mesh(new THREE.OctahedronGeometry(.45,0),new THREE.MeshStandardMaterial({color:type.color,emissive:type.color,emissiveIntensity:1.2,metalness:.25,roughness:.18}));gem.castShadow=true;group.add(gem);const ring=new THREE.Mesh(new THREE.TorusGeometry(.65,.07,8,24),new THREE.MeshBasicMaterial({color:type.color}));ring.rotation.x=Math.PI/2;group.add(ring);const light=new THREE.PointLight(type.color,2.5,6);group.add(light);group.position.copy(tile.group.position).add(new THREE.Vector3(Math.cos(a)*r,1.15,Math.sin(a)*r));scene.add(group);powerups.push({group,type,age:0});
 }
@@ -458,7 +472,12 @@ function setDestination(point,tree=null){
 }
 
 function pointIsOnLand(point){
-  for(const tile of tiles.values()){const local=point.clone().sub(tile.group.position),q=Math.abs(local.x),r=Math.abs(local.z);if(q<HEX_RADIUS*.82&&r<HEX_RADIUS*.86&&q*.577+r<HEX_RADIUS*.95)return true}return false;
+  const margin=1.015,halfWidth=Math.sqrt(3)*HEX_RADIUS*.5*margin,maxZ=HEX_RADIUS*margin,edge=Math.sqrt(3)*HEX_RADIUS*margin;
+  for(const tile of tiles.values()){
+    const local=point.clone().sub(tile.group.position),x=Math.abs(local.x),z=Math.abs(local.z);
+    if(x<=halfWidth&&z<=maxZ&&x+Math.sqrt(3)*z<=edge)return true;
+  }
+  return false;
 }
 
 function updatePlayer(dt){
@@ -477,8 +496,7 @@ function updatePlayer(dt){
   player.group.rotation.y=player.yaw;player.visual.rotation.z=lerp(player.visual.rotation.z,-steer*.06,dt*5);player.visual.position.y=Math.sin(performance.now()*.012)*Math.min(Math.abs(player.speed)*.006,.022);
   audio.setEngine(clamp(Math.abs(player.speed)/maxSpeed,0,1));
   if(depot&&player.group.position.distanceTo(depot.position)<1.6)deliverCargo();
-  resources.forEach(tree=>{if(tree.active&&tree.group.getWorldPosition(new THREE.Vector3()).distanceTo(player.group.position)<1.0)harvestTree(tree)});
-  logs.slice().forEach(log=>{const d=log.mesh.position.distanceTo(player.group.position);if(d<magnetRadius()&&state.cargo.length<capacity()){log.mesh.position.lerp(player.group.position.clone().add(new THREE.Vector3(0,.65,0)),clamp(dt*(7+state.upgrades.magnet),0,1));if(d<.65)collectLog(log)}});
+  resources.forEach(tree=>{if(tree.active&&tree.group.getWorldPosition(new THREE.Vector3()).distanceTo(player.group.position)<1.0)harvestTree(tree)});  logs.slice().forEach(log=>{const d=log.mesh.position.distanceTo(player.group.position);if(d<magnetRadius()&&state.cargo.length<capacity()){log.mesh.position.lerp(player.group.position.clone().add(new THREE.Vector3(0,.65,0)),clamp(dt*(7+state.upgrades.magnet),0,1));if(d<.65)collectLog(log)}});
   player.targetRing.rotation.z+=dt*.9;state.player={x:player.group.position.x,z:player.group.position.z,yaw:player.yaw};
 }
 
@@ -488,7 +506,7 @@ function updateResources(dt){
 }
 
 function updateHelpers(dt){
-  helpers.forEach((h,i)=>{h.timer-=dt;if(h.timer<=0||h.group.position.distanceTo(h.target)<.5){const tile=[...tiles.values()][Math.floor(Math.random()*tiles.size)];h.target.copy(tile.group.position).add(new THREE.Vector3((Math.random()-.5)*4,0,(Math.random()-.5)*4));h.timer=4+Math.random()*4;if(Math.random()<.5){const passive=Math.round((2+i)*valueMultiplier());state.wood+=passive;state.earned+=passive;missionEvent('earn',passive);floatText(`+${passive}`,h.group.position,'#baf3c7',.55)}}const d=h.target.clone().sub(h.group.position),yaw=Math.atan2(d.x,d.z);h.group.rotation.y=smoothAngle(h.group.rotation.y,yaw,dt*2);h.group.position.addScaledVector(d.normalize(),h.speed*dt)});
+  helpers.forEach((h,i)=>{h.timer-=dt;if(h.timer<=0||h.group.position.distanceTo(h.target)<.5){const tile=[...tiles.values()][Math.floor(Math.random()*tiles.size)];h.target.copy(tile.group.position).add(new THREE.Vector3((Math.random()-.5)*16,0,(Math.random()-.5)*16));h.timer=4+Math.random()*4;if(Math.random()<.5){const passive=Math.round((2+i)*valueMultiplier());state.wood+=passive;state.earned+=passive;missionEvent('earn',passive);floatText(`+${passive}`,h.group.position,'#baf3c7',.55)}}const d=h.target.clone().sub(h.group.position),yaw=Math.atan2(d.x,d.z);h.group.rotation.y=smoothAngle(h.group.rotation.y,yaw,dt*2);h.group.position.addScaledVector(d.normalize(),h.speed*dt)});
 }
 
 function updateEffects(dt){
@@ -506,14 +524,15 @@ function updateShift(dt){
 }
 
 function upgradeCost(def,level=state.upgrades[def.id]){return Math.round(def.base*Math.pow(1.72,level)/5)*5}
+function hasRequiredWood(def){return !def.requiresWood||(state.woodByType?.[def.requiresWood]||0)>0}
 function shopChoices(){
-  const available=UPGRADE_DEFS.filter(d=>state.upgrades[d.id]<d.max);const ranked=available.sort((a,b)=>{const boostA=(a.id==='auto'&&!state.upgrades.auto)?-2:Math.random();const boostB=(b.id==='auto'&&!state.upgrades.auto)?-2:Math.random();return boostA-boostB});return ranked.slice(0,3);
+  const available=UPGRADE_DEFS.filter(d=>state.upgrades[d.id]<d.max&&hasRequiredWood(d));const ranked=available.sort((a,b)=>{const boostA=(a.id==='auto'&&!state.upgrades.auto)?-2:Math.random();const boostB=(b.id==='auto'&&!state.upgrades.auto)?-2:Math.random();return boostA-boostB});return ranked.slice(0,3);
 }
 function renderShop(){
-  const grid=$('#upgradeGrid');grid.innerHTML='';shopChoices().forEach(def=>{const level=state.upgrades[def.id],cost=upgradeCost(def),button=document.createElement('button');button.className='upgrade-card';button.disabled=state.wood<cost;button.innerHTML=`<span class="upgrade-icon">${def.icon}</span><div><h3>${def.name}</h3><p>${def.text}</p></div><footer><span>▰ ${cost}</span><small>NIVEL ${level}/${def.max}</small></footer>`;button.addEventListener('click',()=>buyUpgrade(def));grid.appendChild(button)});$('#nextExpansion').textContent=`${expansionCost()} madera`;
+  const grid=$('#upgradeGrid');grid.innerHTML='';shopChoices().forEach(def=>{const level=state.upgrades[def.id],cost=upgradeCost(def),button=document.createElement('button');button.className='upgrade-card';button.disabled=state.wood<cost;const woodReq=def.requiresWood?WOOD_TYPES[def.requiresWood]:null;button.innerHTML=`<span class="upgrade-icon">${def.icon}</span><div><h3>${def.name}</h3><p>${def.text}</p>${woodReq?`<small class="wood-requirement">${woodReq.icon} Requiere ${woodReq.name}</small>`:''}</div><footer><span>▰ ${cost}</span><small>NIVEL ${level}/${def.max}</small></footer>`;button.addEventListener('click',()=>buyUpgrade(def));grid.appendChild(button)});$('#nextExpansion').textContent=`${expansionCost()} madera`;
 }
 function buyUpgrade(def){
-  const cost=upgradeCost(def);if(state.wood<cost)return;state.wood-=cost;state.upgrades[def.id]++;state.upgradesBought++;missionEvent('upgrade',1);audio.upgrade();toast(`${def.icon} <strong>${def.name}</strong> mejorado`);if(def.id==='fleet')createHelper(state.upgrades.fleet-1);if(def.id==='capacity')rebuildCargo();if(def.id==='auto'){$('#autoButton').classList.remove('locked');$('#autoButton span').textContent='○'}updateHUD();renderShop();saveGame();
+  const cost=upgradeCost(def);if(!hasRequiredWood(def)||state.wood<cost)return;state.wood-=cost;state.upgrades[def.id]++;state.upgradesBought++;missionEvent('upgrade',1);audio.upgrade();toast(`${def.icon} <strong>${def.name}</strong> mejorado`);if(def.id==='fleet')createHelper(state.upgrades.fleet-1);if(def.id==='capacity')rebuildCargo();if(def.id==='auto'){$('#autoButton').classList.remove('locked');$('#autoButton span').textContent='○'}updateHUD();renderShop();saveGame();
 }
 function openShop(reason='manual'){
   if($('#shop').classList.contains('visible')||$('#welcome').classList.contains('visible'))return;shopReason=reason;paused=true;$('#shop').classList.add('visible');$('#shop').setAttribute('aria-hidden','false');$('#shopKicker').textContent=reason==='sunset'?`ATARDECER · FIN DEL TURNO ${state.shift}`:'TALLER DEL DIQUE';$('#shopTitle').textContent=reason==='rank'?'El bosque celebra tu nuevo rango':reason==='sunset'?'Una mejora antes del próximo turno':'Ajustes y buenas ideas';$('#continueButton').innerHTML=reason==='sunset'?'Siguiente turno <span>→</span>':'Volver al bosque <span>→</span>';renderShop();audio.click();
@@ -534,11 +553,13 @@ function missionEvent(type){
 function renderCargo(){const el=$('#cargoSlots');el.innerHTML='';for(let i=0;i<capacity();i++){const slot=document.createElement('i');slot.className=`cargo-slot ${i<state.cargo.length?'filled':''}`;el.appendChild(slot)}$('#cargoValue').textContent=`${state.cargo.length} / ${capacity()}`}
 function renderCombo(){const el=$('#combo');el.classList.toggle('show',combo>1);el.querySelector('b').textContent=`x${combo}`;el.querySelector('i').style.transform=`scaleX(${clamp(comboTimer/(6+state.upgrades.combo*1.5),0,1)})`}
 function updateHUD(){
-  $('#woodValue').textContent=Math.floor(state.wood).toLocaleString('es-AR');$('#starValue').textContent=state.stars.toLocaleString('es-AR');$('#levelValue').textContent=state.level;$('#shiftLabel').textContent=`TURNO ${state.shift}`;renderCargo();if(state.upgrades.auto){$('#autoButton').classList.remove('locked');$('#autoButton span').textContent=state.auto?'●':'○';$('#autoButton').classList.toggle('active',state.auto)}updateMission();
+  $('#woodValue').textContent=Math.floor(state.wood).toLocaleString('es-AR');
+  const woodSummary=$('#woodTypeSummary');if(woodSummary)woodSummary.textContent=Object.values(WOOD_TYPES).map(w=>`${w.short} ${Math.floor(state.woodByType?.[w.id]||0)}`).join(' · ');
+  $('#starValue').textContent=state.stars.toLocaleString('es-AR');$('#levelValue').textContent=state.level;$('#shiftLabel').textContent=`TURNO ${state.shift}`;renderCargo();if(state.upgrades.auto){$('#autoButton').classList.remove('locked');$('#autoButton span').textContent=state.auto?'●':'○';$('#autoButton').classList.toggle('active',state.auto)}updateMission();
 }
 
 function saveGame(){if(!running)return;state.lastSeen=Date.now();localStorage.setItem(SAVE_KEY,JSON.stringify(state))}
-function restoreSave(){if(!pendingSave)return;state={...defaultState(),...pendingSave,upgrades:{...defaultState().upgrades,...pendingSave.upgrades},cargo:[]};const elapsed=Math.min((Date.now()-(state.lastSeen||Date.now()))/1000,4*3600),rate=(.045+state.upgrades.fleet*.08+(state.unlocked?.length||1)*.012)*(1+state.upgrades.offline*.35),gain=Math.floor(elapsed*rate);if(gain>2){state.wood+=gain;state.earned+=gain;setTimeout(()=>toast(`🌙 Turno nocturno · <strong>+${gain} madera</strong>`),900)}}
+function restoreSave(){if(!pendingSave)return;state={...defaultState(),...pendingSave,woodByType:{...defaultState().woodByType,...pendingSave.woodByType},upgrades:{...defaultState().upgrades,...pendingSave.upgrades},cargo:[]};const elapsed=Math.min((Date.now()-(state.lastSeen||Date.now()))/1000,4*3600),rate=(.045+state.upgrades.fleet*.08+(state.unlocked?.length||1)*.012)*(1+state.upgrades.offline*.35),gain=Math.floor(elapsed*rate);if(gain>2){state.wood+=gain;state.earned+=gain;setTimeout(()=>toast(`🌙 Turno nocturno · <strong>+${gain} madera</strong>`),900)}}
 
 function startGame(continueSave=false){
   audio.start();if(continueSave)restoreSave();else{state=defaultState();localStorage.removeItem(SAVE_KEY)}audio.enabled=state.sound;if(!worldBuilt){buildWorld(coreAssets);worldBuilt=true}$('#soundButton').classList.toggle('active',state.sound);$('#soundButton span').textContent=state.sound?'♪':'×';$('#welcome').classList.remove('visible');$('#welcome').setAttribute('aria-hidden','true');running=true;paused=false;clock.getDelta();updateHUD();setTimeout(()=>$('#inputHint').classList.add('hide'),8500);saveGame();
@@ -577,4 +598,3 @@ async function init(){
   catch(error){console.error(error);$('#loadingDetail').textContent='No se pudieron cargar los modelos. Serví el repo por HTTP.';$('#loading .loader-hex').textContent='!'}
 }
 init();
-
