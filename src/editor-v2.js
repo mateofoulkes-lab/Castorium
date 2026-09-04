@@ -33,13 +33,13 @@ const transform=new TransformControls(camera,renderer.domElement);transform.setS
 transform.addEventListener('dragging-changed',e=>orbit.enabled=!e.value);
 scene.add(new THREE.HemisphereLight(0xffffff,0x45505b,2));const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(15,25,12);sun.castShadow=true;scene.add(sun);
 let grid=new THREE.GridHelper(60,60,0x87919c,0x4b555f);scene.add(grid);
-const floorGroup=new THREE.Group();scene.add(floorGroup);const objectGroup=new THREE.Group();scene.add(objectGroup);const routeGroup=new THREE.Group();scene.add(routeGroup);
+const floorGroup=new THREE.Group();scene.add(floorGroup);const decalGroup=new THREE.Group();scene.add(decalGroup);const objectGroup=new THREE.Group();scene.add(objectGroup);const routeGroup=new THREE.Group();scene.add(routeGroup);
 const loader=new GLTFLoader();const textureLoader=new THREE.TextureLoader();const clock=new THREE.Clock();
 
-let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,routeGhostInfo=null,currentTileId=null,floorPaint=false,eraseFloorMode=false;
-const runtime=new Map(),assetRuntime=new Map(),animationRuntime=new Map(),mixers=new Map();
+let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,routeGhostInfo=null,currentTileId=null,floorPaint=false,eraseFloorMode=false,selectedDecalId=null,draggingDecal=false;
+const runtime=new Map(),assetRuntime=new Map(),animationRuntime=new Map(),decalRuntime=new Map(),mixers=new Map();
 let selectionBox=null;
-function defaultData(){return {version:2.2,gridSize:1,floor:{width:30,depth:20,cells:{}},objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
+function defaultData(){return {version:2.3,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
 function isCharacterKind(kind){return info(kind).group==='Personajes'}
 function uid(p='id'){return p+'-'+Math.random().toString(36).slice(2,9)}
 function t0(){return {position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1}}}
@@ -107,14 +107,105 @@ function refreshBuffer(r){const root=runtime.get(r.id);if(!root)return;const old
 
 function renderCatalog(filter=''){const q=filter.toLowerCase(),assetOptions=data.assets.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');$('#objectCatalog').innerHTML=`<div style="margin-bottom:10px"><label>Modelo al crear <select id="createAsset"><option value="">Automático / placeholder</option>${assetOptions}</select></label><small class="muted" style="display:block;margin-top:4px">Castor usa Castor v2 automáticamente. Para cualquier otro objeto podés elegir un GLB acá.</small></div>`+Object.entries(CATALOG).map(([g,a])=>{const f=a.filter(x=>x[1].toLowerCase().includes(q)||x[0].includes(q));return f.length?`<div class="catalog-group"><h3>${g}</h3><div class="catalog-grid">${f.map(x=>`<button type="button" data-kind="${x[0]}">${x[1]}</button>`).join('')}</div></div>`:''}).join('');document.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{const aid=$('#createAsset')?.value||null;addRecord(b.dataset.kind,aid);$('#objectDialog').close()})}
 
+
+function ensureFloorV23(){
+  data.floor=data.floor||{width:30,depth:20,cells:{}};
+  data.floor.cells=data.floor.cells||{};
+  data.floor.base=Object.assign({name:null,repeatX:6,repeatY:4,rotate90:false},data.floor.base||{});
+  data.floor.dirt=Object.assign({name:null,repeatX:6,repeatY:4,rotate90:false},data.floor.dirt||{});
+  data.decals=Array.isArray(data.decals)?data.decals:[];
+  data.decalLibrary=Array.isArray(data.decalLibrary)?data.decalLibrary:[];
+}
+async function uploadFloorLayer(file,layer){
+  await dbPut('floor:'+layer,file);
+  data.floor[layer].name=file.name;
+  saveSoon();await rebuildFloorLayers();renderFloorControls();
+}
+async function floorTexture(layer){
+  const blob=await dbGet('floor:'+layer);if(!blob)return null;
+  return await new Promise((ok,no)=>{const u=URL.createObjectURL(blob);textureLoader.load(u,t=>{URL.revokeObjectURL(u);t.colorSpace=THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;ok(t)},undefined,no)});
+}
+function clearFloorVisuals(){floorGroup.clear()}
+async function addRepeatedLayer(layer,y,transparent){
+  const cfg=data.floor[layer],tex=await floorTexture(layer);if(!tex)return;
+  const w=data.floor.width,d=data.floor.depth,s=data.gridSize,rx=Math.max(1,+cfg.repeatX||1),ry=Math.max(1,+cfg.repeatY||1);
+  const cellW=w*s/rx,cellD=d*s/ry;
+  for(let x=0;x<rx;x++)for(let z=0;z<ry;z++){
+    const t=tex.clone();t.needsUpdate=true;t.center.set(.5,.5);
+    if(cfg.rotate90)t.rotation=THREE.MathUtils.degToRad(((x*37+z*53)%4)*90);
+    const mat=new THREE.MeshStandardMaterial({map:t,side:THREE.DoubleSide,transparent,depthWrite:!transparent});
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(cellW,cellD),mat);m.rotation.x=-Math.PI/2;m.position.set((x-rx/2+.5)*cellW,y,(z-ry/2+.5)*cellD);floorGroup.add(m);
+  }
+}
+async function rebuildFloorLayers(){
+  clearFloorVisuals();
+  const w=data.floor.width*data.gridSize,d=data.floor.depth*data.gridSize;
+  const baseBg=new THREE.Mesh(new THREE.PlaneGeometry(w,d),new THREE.MeshStandardMaterial({color:0x343a40,side:THREE.DoubleSide}));
+  baseBg.rotation.x=-Math.PI/2;baseBg.position.y=-.003;floorGroup.add(baseBg);
+  await addRepeatedLayer('base',0,false);
+  await addRepeatedLayer('dirt',.003,true);
+}
+async function uploadDecal(file){
+  const id=uid('decalAsset');await dbPut('decal:'+id,file);data.decalLibrary.push({id,name:file.name});saveSoon();renderFloorControls();
+}
+async function decalTexture(id){
+  const blob=await dbGet('decal:'+id);if(!blob)return null;
+  return await new Promise((ok,no)=>{const u=URL.createObjectURL(blob);textureLoader.load(u,t=>{URL.revokeObjectURL(u);t.colorSpace=THREE.SRGBColorSpace;ok(t)},undefined,no)});
+}
+async function instantiateDecal(rec){
+  const old=decalRuntime.get(rec.id);if(old){decalGroup.remove(old);decalRuntime.delete(rec.id)}
+  const tex=await decalTexture(rec.assetId);if(!tex)return;
+  const mat=new THREE.MeshBasicMaterial({map:tex,transparent:rec.transparent!==false,side:THREE.DoubleSide,depthWrite:false});
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(1,1),mat);m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(rec.rotation||0));m.position.set(rec.x||0,.008,rec.z||0);m.scale.set(rec.scaleX||1,rec.scaleY||1,1);m.userData.decalId=rec.id;decalGroup.add(m);decalRuntime.set(rec.id,m);return m;
+}
+async function rebuildDecals(){decalGroup.clear();decalRuntime.clear();for(const d of data.decals)await instantiateDecal(d);refreshDecalSelection()}
+function selectedDecal(){return data.decals.find(d=>d.id===selectedDecalId)||null}
+function clearDecalSelection(){selectedDecalId=null;refreshDecalSelection()}
+function refreshDecalSelection(){
+  decalRuntime.forEach((m,id)=>{let h=m.getObjectByName('__decalSel');if(h)m.remove(h);if(id===selectedDecalId){h=new THREE.BoxHelper(m,0xffd54a);h.name='__decalSel';h.material.depthTest=false;h.renderOrder=1000;scene.add(h);setTimeout(()=>scene.remove(h),0)}});
+  renderFloorControls();
+}
+function setDecalSelected(id){selectedDecalId=id;selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();renderTree();renderInspector();renderFloorControls()}
+async function placeDecalAt(assetId,p){
+  if(!assetId)return;const rec={id:uid('decal'),assetId,x:+p.x.toFixed(4),z:+p.z.toFixed(4),rotation:0,scaleX:2,scaleY:2,locked:false,transparent:false};
+  data.decals.push(rec);await instantiateDecal(rec);setDecalSelected(rec.id);saveSoon();
+}
+function rotateDecal(id,deg=45){const d=data.decals.find(x=>x.id===id);if(!d||d.locked)return;d.rotation=((d.rotation||0)+deg)%360;const m=decalRuntime.get(id);if(m)m.rotation.z=THREE.MathUtils.degToRad(d.rotation);saveSoon();renderFloorControls()}
+function renderFloorControls(){
+  const el=$('#floorV23');if(!el)return;
+  const lib=data.decalLibrary.map(a=>`<div class="asset-row decal-library-item ${a.id===window.__selectedDecalAsset?'selected':''}" draggable="true" data-decal-asset="${a.id}"><span class="asset-name">${esc(a.name)}</span></div>`).join('')||'<div class="muted">Cargá JPG/PNG para la biblioteca.</div>';
+  const d=selectedDecal();
+  el.innerHTML=`
+  <div class="floor-layer-card"><b>Capa base</b><label class="file-button wide">Cargar imagen<input id="baseUpload" type="file" accept="image/*"></label><small>${esc(data.floor.base.name||'Sin imagen')}</small><div class="row"><label>Rep X <input id="baseRX" type="number" min="1" max="50" value="${data.floor.base.repeatX}"></label><label>Rep Y <input id="baseRY" type="number" min="1" max="50" value="${data.floor.base.repeatY}"></label></div><label><input id="baseRot" type="checkbox" ${data.floor.base.rotate90?'checked':''}> Rotar mosaicos de a 90°</label></div>
+  <div class="floor-layer-card"><b>Decals</b><label class="file-button wide">Agregar JPG / PNG<input id="decalUpload" type="file" accept="image/jpeg,image/png,image/webp"></label><small>Arrastrá al viewport o seleccioná y Ctrl+click. Click derecho sobre decal: +45°.</small><div id="decalLibraryV23">${lib}</div>${d?`<div class="decal-selected-panel"><b>Seleccionada</b><label><input id="decalLock" type="checkbox" ${d.locked?'checked':''}> Bloquear posición</label><div class="row"><label>Ancho <input id="decalSX" type="number" step=".1" value="${d.scaleX}"></label><label>Alto <input id="decalSY" type="number" step=".1" value="${d.scaleY}"></label></div><small>Rotación: ${d.rotation||0}°</small><button id="deleteDecal">Eliminar decal</button></div>`:''}</div>
+  <div class="floor-layer-card"><b>Capa mugre</b><label class="file-button wide">Cargar PNG con alfa<input id="dirtUpload" type="file" accept="image/png,image/webp"></label><small>${esc(data.floor.dirt.name||'Sin imagen')}</small><div class="row"><label>Rep X <input id="dirtRX" type="number" min="1" max="50" value="${data.floor.dirt.repeatX}"></label><label>Rep Y <input id="dirtRY" type="number" min="1" max="50" value="${data.floor.dirt.repeatY}"></label></div><label><input id="dirtRot" type="checkbox" ${data.floor.dirt.rotate90?'checked':''}> Rotar mosaicos de a 90°</label></div>`;
+  $('#baseUpload').onchange=e=>e.target.files[0]&&uploadFloorLayer(e.target.files[0],'base');$('#dirtUpload').onchange=e=>e.target.files[0]&&uploadFloorLayer(e.target.files[0],'dirt');$('#decalUpload').onchange=e=>e.target.files[0]&&uploadDecal(e.target.files[0]);
+  [['baseRX','base','repeatX'],['baseRY','base','repeatY'],['dirtRX','dirt','repeatX'],['dirtRY','dirt','repeatY']].forEach(([id,l,k])=>$('#'+id).onchange=e=>{data.floor[l][k]=Math.max(1,+e.target.value||1);rebuildFloorLayers();saveSoon()});
+  $('#baseRot').onchange=e=>{data.floor.base.rotate90=e.target.checked;rebuildFloorLayers();saveSoon()};$('#dirtRot').onchange=e=>{data.floor.dirt.rotate90=e.target.checked;rebuildFloorLayers();saveSoon()};
+  document.querySelectorAll('[data-decal-asset]').forEach(x=>{x.onclick=()=>{window.__selectedDecalAsset=x.dataset.decalAsset;renderFloorControls()};x.ondragstart=e=>{e.dataTransfer.setData('text/castorium-decal',x.dataset.decalAsset);window.__selectedDecalAsset=x.dataset.decalAsset}});
+  if(d){$('#decalLock').onchange=e=>{d.locked=e.target.checked;saveSoon()};$('#decalSX').onchange=e=>{d.scaleX=Math.max(.05,+e.target.value||1);decalRuntime.get(d.id)?.scale.set(d.scaleX,d.scaleY,1);saveSoon()};$('#decalSY').onchange=e=>{d.scaleY=Math.max(.05,+e.target.value||1);decalRuntime.get(d.id)?.scale.set(d.scaleX,d.scaleY,1);saveSoon()};$('#deleteDecal').onclick=()=>{decalGroup.remove(decalRuntime.get(d.id));decalRuntime.delete(d.id);data.decals=data.decals.filter(x=>x.id!==d.id);selectedDecalId=null;saveSoon();renderFloorControls()}}
+}
+function floorPointFromEvent(e){const ray=rayFromEvent(e),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),p=new THREE.Vector3();return ray.ray.intersectPlane(plane,p)?p:null}
+function copyFloorConfig(){
+  const out={version:'2.3',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
+  navigator.clipboard.writeText(JSON.stringify(out,null,2)).then(()=>alert('Configuración del piso copiada. Pegámela en el chat cuando quieras hardcodearla.'));
+}
 async function uploadTile(file){const id=uid('tile');await dbPut('tile:'+id,file);data.tiles.push({id,name:file.name});currentTileId=id;saveSoon();renderTiles()}
 async function applyTile(mesh,cell){const id=typeof cell==='string'?cell:cell?.tileId;if(!id)return;const b=await dbGet('tile:'+id);if(!b)return;const u=URL.createObjectURL(b);textureLoader.load(u,t=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;t.center.set(.5,.5);t.rotation=THREE.MathUtils.degToRad(typeof cell==='string'?0:(cell.rotation||0));mesh.material.map=t;mesh.material.color.set(0xffffff);mesh.material.needsUpdate=true;URL.revokeObjectURL(u)})}
 function rebuildFloor(){floorGroup.clear();const w=data.floor.width,d=data.floor.depth,s=data.gridSize;for(let x=0;x<w;x++)for(let z=0;z<d;z++){const key=x+','+z,cell=data.floor.cells[key],m=new THREE.Mesh(new THREE.PlaneGeometry(s,s),new THREE.MeshStandardMaterial({color:cell?0xffffff:0x343a40,side:THREE.DoubleSide}));m.rotation.x=-Math.PI/2;m.position.set((x-w/2+.5)*s,0,(z-d/2+.5)*s);m.userData.floorCell={x,z,key};floorGroup.add(m);if(cell)applyTile(m,cell)}}
 function renderTiles(){$('#tilePalette').innerHTML=data.tiles.map(t=>`<div class="tile-row"><div class="tile-thumb ${t.id===currentTileId?'active':''}" data-tile="${t.id}"></div><span>${esc(t.name)}</span></div>`).join('')||'<div class="muted">Cargá una textura para pintar.</div>';data.tiles.forEach(async t=>{const b=await dbGet('tile:'+t.id),e=document.querySelector(`[data-tile="${t.id}"]`);if(b&&e){const u=URL.createObjectURL(b);e.style.backgroundImage=`url(${u})`;e.onclick=()=>{currentTileId=t.id;eraseFloorMode=false;renderTiles()}}})}
 function rayFromEvent(e){const r=renderer.domElement.getBoundingClientRect(),m=new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1),ray=new THREE.Raycaster();ray.setFromCamera(m,camera);return ray}
 function recordIdFromHit(obj){let o=obj;while(o&&o!==objectGroup){if(o.userData?.recordId)return o.userData.recordId;o=o.parent}return null}
-renderer.domElement.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button!==2)return;const ray=rayFromEvent(e);if(floorPaint){const h=ray.intersectObjects(floorGroup.children,false)[0];if(!h)return;const k=h.object.userData.floorCell.key;if(e.button===2){e.preventDefault();const old=data.floor.cells[k];if(old){const cell=typeof old==='string'?{tileId:old,rotation:0}:old;cell.rotation=((cell.rotation||0)+90)%360;data.floor.cells[k]=cell}else if(currentTileId&&!eraseFloorMode)data.floor.cells[k]={tileId:currentTileId,rotation:90}}else{if(eraseFloorMode||!currentTileId)delete data.floor.cells[k];else data.floor.cells[k]={tileId:currentTileId,rotation:0}}rebuildFloor();saveSoon();return}if(e.button!==0)return;const hits=ray.intersectObjects(objectGroup.children,true).filter(h=>!h.object.userData?.editorLabel);for(const h of hits){const id=recordIdFromHit(h.object);if(id){select(id);return}}});
-renderer.domElement.addEventListener('contextmenu',e=>{if(floorPaint)e.preventDefault()});
+renderer.domElement.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button!==2)return;const ray=rayFromEvent(e);
+  const decalHit=ray.intersectObjects(decalGroup.children,true)[0];
+  if(decalHit){const id=decalHit.object.userData.decalId||decalHit.object.parent?.userData?.decalId;if(id){if(e.button===2){e.preventDefault();rotateDecal(id,45);setDecalSelected(id);return}setDecalSelected(id);const d=data.decals.find(x=>x.id===id);if(d&&!d.locked){draggingDecal=true;orbit.enabled=false}return}}
+  if(e.ctrlKey&&e.button===0&&window.__selectedDecalAsset){const p=floorPointFromEvent(e);if(p){placeDecalAt(window.__selectedDecalAsset,p);return}}
+if(floorPaint){const h=ray.intersectObjects(floorGroup.children,false)[0];if(!h)return;const k=h.object.userData.floorCell.key;if(e.button===2){e.preventDefault();const old=data.floor.cells[k];if(old){const cell=typeof old==='string'?{tileId:old,rotation:0}:old;cell.rotation=((cell.rotation||0)+90)%360;data.floor.cells[k]=cell}else if(currentTileId&&!eraseFloorMode)data.floor.cells[k]={tileId:currentTileId,rotation:90}}else{if(eraseFloorMode||!currentTileId)delete data.floor.cells[k];else data.floor.cells[k]={tileId:currentTileId,rotation:0}}rebuildFloor();saveSoon();return}if(e.button!==0)return;const hits=ray.intersectObjects(objectGroup.children,true).filter(h=>!h.object.userData?.editorLabel);for(const h of hits){const id=recordIdFromHit(h.object);if(id){select(id);return}}});
+renderer.domElement.addEventListener('pointermove',e=>{if(!draggingDecal||!selectedDecalId)return;const d=selectedDecal();if(!d||d.locked)return;const p=floorPointFromEvent(e);if(!p)return;d.x=+p.x.toFixed(4);d.z=+p.z.toFixed(4);const m=decalRuntime.get(d.id);if(m)m.position.set(d.x,.008,d.z);saveSoon()});
+window.addEventListener('pointerup',()=>{if(draggingDecal){draggingDecal=false;orbit.enabled=true}});
+renderer.domElement.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('text/castorium-decal'))e.preventDefault()});
+renderer.domElement.addEventListener('drop',e=>{const id=e.dataTransfer.getData('text/castorium-decal');if(!id)return;e.preventDefault();const p=floorPointFromEvent(e);if(p)placeDecalAt(id,p)});
+renderer.domElement.addEventListener('contextmenu',e=>{if(floorPaint||rayFromEvent(e).intersectObjects(decalGroup.children,true).length)e.preventDefault()});
 
 function addRoute(){const r={id:uid('route'),name:'Ruta '+(data.routes.length+1),vehicleAssetId:null,keyframes:[{id:uid('kf'),ref:'custom',transform:t0()},{id:uid('kf'),ref:'custom',transform:{...t0(),position:{x:4,y:0,z:0}}}]};data.routes.push(r);renderRoutes();selectKf(r.id,r.keyframes[0].id);saveSoon()}
 function currentRoute(){return data.routes.find(r=>r.id===$('#routeSelect').value)||data.routes[0]||null}
@@ -125,15 +216,15 @@ function dyn(ref){const r=data.objects.find(o=>o.meta?.refKey===ref||o.name===re
 function redrawRoutes(keepGhost=true){[...routeGroup.children].forEach(c=>{if(keepGhost&&c===routeGhost)return;routeGroup.remove(c)});data.routes.forEach(r=>{const p=r.keyframes.map(k=>k.ref==='custom'?new THREE.Vector3(k.transform.position.x,k.transform.position.y+.08,k.transform.position.z):dyn(k.ref)).filter(Boolean);if(p.length>1){routeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p),new THREE.LineBasicMaterial({color:0x69c9ff})));p.forEach(v=>{const s=new THREE.Mesh(new THREE.SphereGeometry(.12,8,6),new THREE.MeshBasicMaterial({color:0x69c9ff}));s.position.copy(v);routeGroup.add(s)})}})}
 
 let saveTimer;function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(saveLocal,200)}function saveLocal(){data.gridSize=+$('#gridSize').value||1;data.camera={position:camera.position.toArray(),target:orbit.target.toArray()};localStorage.setItem(STORAGE_KEY,JSON.stringify(data))}
-async function loadLocal(){const raw=localStorage.getItem(STORAGE_KEY);if(raw)try{data=Object.assign(defaultData(),JSON.parse(raw));data.animations=Array.isArray(data.animations)?data.animations:[]}catch{}await ensurePreset();$('#gridSize').value=data.gridSize||1;$('#floorWidth').value=data.floor.width;$('#floorDepth').value=data.floor.depth;camera.position.fromArray(data.camera?.position||[18,20,22]);orbit.target.fromArray(data.camera?.target||[0,0,0]);updateGrid();rebuildFloor();for(const o of data.objects)await instantiate(o);renderAll();saveLocal()}
-function renderAll(){renderTree();renderLayers();renderInspector();renderAssetLibrary();renderTiles();renderCatalog();renderRoutes()}
-function updateGrid(){scene.remove(grid);const s=+$('#gridSize').value||1,size=Math.max(data.floor.width,data.floor.depth)*s*1.5;grid=new THREE.GridHelper(size,Math.round(size/s),0x87919c,0x4b555f);grid.visible=$('#toggleGrid').classList.contains('active');scene.add(grid);data.gridSize=s;rebuildFloor();saveSoon()}
+async function loadLocal(){const raw=localStorage.getItem(STORAGE_KEY);if(raw)try{data=Object.assign(defaultData(),JSON.parse(raw));data.animations=Array.isArray(data.animations)?data.animations:[]}catch{}ensureFloorV23();await ensurePreset();$('#gridSize').value=data.gridSize||1;$('#floorWidth').value=data.floor.width;$('#floorDepth').value=data.floor.depth;camera.position.fromArray(data.camera?.position||[18,20,22]);orbit.target.fromArray(data.camera?.target||[0,0,0]);updateGrid();await rebuildFloorLayers();await rebuildDecals();for(const o of data.objects)await instantiate(o);renderAll();saveLocal()}
+function renderAll(){renderTree();renderLayers();renderInspector();renderAssetLibrary();renderTiles();renderCatalog();renderRoutes();renderFloorControls()}
+function updateGrid(){scene.remove(grid);const s=+$('#gridSize').value||1,size=Math.max(data.floor.width,data.floor.depth)*s*1.5;grid=new THREE.GridHelper(size,Math.round(size/s),0x87919c,0x4b555f);grid.visible=$('#toggleGrid').classList.contains('active');scene.add(grid);data.gridSize=s;rebuildFloorLayers();saveSoon()}
 function exportJson(){saveLocal();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='castorium-map.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-async function importJson(file){data=Object.assign(defaultData(),JSON.parse(await file.text()));data.animations=Array.isArray(data.animations)?data.animations:[];await ensurePreset();selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();objectGroup.clear();runtime.clear();for(const o of data.objects)await instantiate(o);rebuildFloor();renderAll();saveLocal()}
+async function importJson(file){data=Object.assign(defaultData(),JSON.parse(await file.text()));data.animations=Array.isArray(data.animations)?data.animations:[];ensureFloorV23();await ensurePreset();selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();objectGroup.clear();runtime.clear();for(const o of data.objects)await instantiate(o);await rebuildFloorLayers();await rebuildDecals();renderAll();saveLocal()}
 
 window.addEventListener('keydown',e=>{if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName))return;const k=e.key.toLowerCase();if(e.shiftKey&&k==='d'){e.preventDefault();duplicate();return}if(k==='g'){transform.setMode('translate');$('#modeBadge').textContent='MOVER'}else if(k==='r'){transform.setMode('rotate');$('#modeBadge').textContent='ROTAR'}else if(k==='s'){transform.setMode('scale');$('#modeBadge').textContent='ESCALAR'}else if(k==='x'){transform.showX=true;transform.showY=false;transform.showZ=false}else if(k==='y'){transform.showX=false;transform.showY=true;transform.showZ=false}else if(k==='z'){transform.showX=false;transform.showY=false;transform.showZ=true}else if(k==='f')focus();else if(k==='h'&&selected()){const r=selected();r.visible=false;runtime.get(r.id).visible=false;renderTree();saveSoon()}else if(e.altKey&&k==='h'){data.objects.forEach(r=>{r.visible=true;const o=runtime.get(r.id);if(o)o.visible=data.layers[r.layer]!==false});renderTree();saveSoon()}else if(e.key==='Delete')deleteSelected();else if(k==='escape'){transform.showX=transform.showY=transform.showZ=true;$('#modeBadge').textContent='OBJETO'}});
 
-$('#addObject').onclick=()=>{$('#objectDialog').showModal();renderCatalog()};$('#objectSearch').oninput=e=>renderCatalog(e.target.value);$('#treeFilter').oninput=renderTree;$('#modelUpload').onchange=e=>e.target.files[0]&&uploadModel(e.target.files[0]);$('#tileUpload').onchange=e=>e.target.files[0]&&uploadTile(e.target.files[0]);$('#gridSize').onchange=updateGrid;$('#toggleGrid').onclick=e=>{e.currentTarget.classList.toggle('active');grid.visible=e.currentTarget.classList.contains('active')};$('#focusSelected').onclick=focus;$('#floorMode').onclick=e=>{floorPaint=!floorPaint;e.currentTarget.classList.toggle('active',floorPaint);orbit.enabled=!floorPaint;$('#modeBadge').textContent=floorPaint?'PINTAR PISO':'OBJETO'};$('#eraseFloor').onclick=()=>{eraseFloorMode=true;currentTileId=null;renderTiles()};$('#resizeFloor').onclick=()=>{data.floor.width=Math.max(1,+$('#floorWidth').value);data.floor.depth=Math.max(1,+$('#floorDepth').value);updateGrid();saveSoon()};$('#newScene').onclick=()=>{if(!confirm('¿Vaciar la escena?'))return;const assets=data.assets,tiles=data.tiles;data=defaultData();data.assets=assets;data.tiles=tiles;objectGroup.clear();runtime.clear();selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();rebuildFloor();renderAll();saveLocal()};$('#saveScene').onclick=()=>{saveLocal();alert('Guardado en este navegador.')};$('#exportScene').onclick=exportJson;$('#importScene').onchange=e=>e.target.files[0]&&importJson(e.target.files[0]);$('#addRoute').onclick=addRoute;$('#routeSelect').onchange=()=>{renderRouteEditor();redrawRoutes()};
+$('#addObject').onclick=()=>{$('#objectDialog').showModal();renderCatalog()};$('#objectSearch').oninput=e=>renderCatalog(e.target.value);$('#treeFilter').oninput=renderTree;$('#modelUpload').onchange=e=>e.target.files[0]&&uploadModel(e.target.files[0]);$('#tileUpload').onchange=e=>e.target.files[0]&&uploadTile(e.target.files[0]);$('#gridSize').onchange=updateGrid;$('#toggleGrid').onclick=e=>{e.currentTarget.classList.toggle('active');grid.visible=e.currentTarget.classList.contains('active')};$('#focusSelected').onclick=focus;$('#floorMode').onclick=e=>{floorPaint=!floorPaint;e.currentTarget.classList.toggle('active',floorPaint);orbit.enabled=!floorPaint;$('#modeBadge').textContent=floorPaint?'PINTAR PISO':'OBJETO'};$('#eraseFloor').onclick=()=>{eraseFloorMode=true;currentTileId=null;renderTiles()};$('#resizeFloor').onclick=()=>{data.floor.width=Math.max(1,+$('#floorWidth').value);data.floor.depth=Math.max(1,+$('#floorDepth').value);updateGrid();rebuildFloorLayers();saveSoon()};$('#newScene').onclick=()=>{if(!confirm('¿Vaciar la escena?'))return;const assets=data.assets,tiles=data.tiles,animations=data.animations,decalLibrary=data.decalLibrary;data=defaultData();data.assets=assets;data.tiles=tiles;data.animations=animations;data.decalLibrary=decalLibrary;objectGroup.clear();runtime.clear();selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();decalGroup.clear();decalRuntime.clear();rebuildFloorLayers();renderAll();saveLocal()};$('#saveScene').onclick=()=>{saveLocal();alert('Guardado en este navegador.')};$('#exportScene').onclick=exportJson;$('#importScene').onchange=e=>e.target.files[0]&&importJson(e.target.files[0]);$('#copyFloorConfig').onclick=copyFloorConfig;$('#addRoute').onclick=addRoute;$('#routeSelect').onchange=()=>{renderRouteEditor();redrawRoutes()};
 function resize(){const r=viewport.getBoundingClientRect();renderer.setSize(r.width,r.height,false);camera.aspect=r.width/r.height;camera.updateProjectionMatrix()}window.addEventListener('resize',resize);resize();
 function animate(){requestAnimationFrame(animate);const dt=clock.getDelta();mixers.forEach(m=>m.update(dt));selectionBox?.update();orbit.update();renderer.render(scene,camera)}animate();
 loadLocal().catch(e=>{console.error(e);alert('Error inicializando editor: '+e.message)});
