@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Castorium · Ajuste del conductor</title>
-  <link rel="stylesheet" href="./styles.css">
+  <title>Castorium · Ajuste Yale / conductor / carga</title>
+  <link rel="stylesheet" href="./styles.css?v=2">
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div>
         <p class="eyebrow">CASTORIUM / UTILIDAD 3D</p>
-        <h1>Ajuste del conductor</h1>
+        <h1>Ajuste Yale · conductor y carga</h1>
       </div>
       <div class="topbar-actions">
         <span id="assetStatus" class="status loading">Cargando modelos…</span>
@@ -30,7 +30,7 @@
           <button id="toggleGrid" class="tool active" type="button">Grilla</button>
           <button id="toggleSkeleton" class="tool" type="button">Esqueleto</button>
         </div>
-        <div class="viewport-hint">Arrastrá el gizmo para ajustar el castor · orbitá con el mouse · rueda para zoom</div>
+        <div class="viewport-hint">Elegí Castor o Troncos · arrastrá el gizmo · orbitá con el mouse · rueda para zoom</div>
       </section>
 
       <aside class="inspector">
@@ -42,6 +42,7 @@
             <div class="asset-row"><span class="dot yale"></span><div><strong>Autoelevador Yale</strong><small>../models/yale.glb</small></div></div>
             <div class="asset-row"><span class="dot castor"></span><div><strong>Castor v2</strong><small>../models/castorv2.glb</small></div></div>
             <div class="asset-row"><span class="dot animation"></span><div><strong>Animación Driving</strong><small>../anim/Driving.fbx</small></div></div>
+            <div class="asset-row"><span class="dot load"></span><div><strong>Preview de troncos</strong><small>misma geometría local que cargoLogGeometry</small></div></div>
           </div>
           <label class="file-button">Cargar Driving.fbx manualmente<input id="animationFile" type="file" accept=".fbx"></label>
           <p id="animationMessage" class="note">El editor intentará cargar el FBX del repositorio automáticamente.</p>
@@ -49,6 +50,11 @@
 
         <section class="panel">
           <div class="panel-title"><div><span class="step">02</span><h2>Transformación</h2></div><button id="resetTransform" class="ghost" type="button">Restablecer</button></div>
+          <div class="target-switch">
+            <button type="button" data-target="castor" class="active">🦫 Castor</button>
+            <button type="button" data-target="load">🪵 Troncos / picking</button>
+          </div>
+          <p class="editing-label">Editando: <strong id="targetLabel">Castor conductor</strong></p>
           <div class="transform-block">
             <span class="axis-label">Posición</span>
             <div class="vector-inputs" data-vector="position">
@@ -87,7 +93,7 @@
 
         <section class="panel output-panel">
           <div class="panel-title"><div><span class="step">04</span><h2>Texto para pegar</h2></div></div>
-          <p class="note">Cuando quede bien, copiá este bloque y pegalo en el chat.</p>
+          <p class="note">Cuando los troncos queden apoyados correctamente sobre las uñas, copiá este bloque. El campo <b>loadPoint</b> es el offset que después se aplica al picking/cargo de la Yale.</p>
           <textarea id="outputText" readonly spellcheck="false"></textarea>
           <button id="copyOutput" class="primary wide" type="button">Copiar configuración</button>
         </section>
@@ -103,7 +109,7 @@
     }
   }
   </script>
-  <script type="module" src="./app.js"></script>
+  <script type="module" src="./app.js?v=2"></script>
 </body>
 </html>
 
