@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Castorium Map Editor v2.10</title>
+  <title>Castorium Map Editor v2.11</title>
   <link rel="stylesheet" href="./editor.css?v=2.10" />
 </head>
 <body>
   <div id="app">
     <header class="topbar">
-      <strong>🦫 Castorium Map Editor v2.10</strong>
+      <strong>🦫 Castorium Map Editor v2.11</strong>
       <button id="newScene">Nuevo</button>
       <button id="saveScene">Guardar</button>
       <button id="exportScene">Exportar JSON</button>
@@ -50,6 +50,14 @@
       <div id="viewport"></div>
       <div id="viewportHelp">G/R/S transformar · P repetir decal · Ctrl en R = snap 45° · X/Y/Z eje · Ctrl+Z deshacer · Decals: Ctrl+D duplica encima · Objetos: Shift+D duplicar</div>
       <div id="modeBadge">OBJETO</div>
+      <div id="decalRepeatOverlay" hidden>
+        <div class="repeat-title">P · REPETIR DECAL</div>
+        <div class="repeat-pad">
+          <span></span><button data-repeat-overlay="up">↑</button><span></span>
+          <button data-repeat-overlay="left">←</button><button data-repeat-overlay="down">↓</button><button data-repeat-overlay="right">→</button>
+        </div>
+        <small>Las flechas siguen la rotación de la decal · P para cerrar</small>
+      </div>
     </main>
 
     <aside class="rightbar">
