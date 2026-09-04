@@ -47,7 +47,7 @@ let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,rou
 const runtime=new Map(),assetRuntime=new Map(),animationRuntime=new Map(),repoAnimationRuntime=new Map(),decalRuntime=new Map(),mixers=new Map();
 let selectionBox=null,decalSelectionBox=null,activeAxis=null;
 let undoStack=[],lastCommittedState=null,isRestoringHistory=false;
-function defaultData(){return {version:2.8,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
+function defaultData(){return {version:2.9,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
 function isCharacterKind(kind){return info(kind).group==='Personajes'}
 function uid(p='id'){return p+'-'+Math.random().toString(36).slice(2,9)}
 function t0(){return {position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1}}}
@@ -59,6 +59,7 @@ function esc(s){return String(s).replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;',
 function openDb(){return new Promise((ok,no)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=()=>r.result.createObjectStore(DB_STORE);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
 async function dbPut(k,v){const db=await openDb();return new Promise((ok,no)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).put(v,k);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}
 async function dbGet(k){const db=await openDb();return new Promise((ok,no)=>{const tx=db.transaction(DB_STORE,'readonly'),r=tx.objectStore(DB_STORE).get(k);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+async function dbDelete(k){const db=await openDb();return new Promise((ok,no)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).delete(k);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}
 
 async function ensurePreset(){if(!data.assets.some(a=>a.id===PRESET_BEAVER_ID))data.assets.unshift({id:PRESET_BEAVER_ID,name:'🦫 Castor v2 (predefinido)',animations:[],preset:true});if(!await dbGet('model:'+PRESET_BEAVER_ID)){const r=await fetch(PRESET_BEAVER_URL);if(!r.ok)throw Error('No pude cargar castorv2.glb');await dbPut('model:'+PRESET_BEAVER_ID,await r.blob())}try{await loadAsset(PRESET_BEAVER_ID)}catch(e){console.warn('Preset castor:',e)}}
 async function loadAsset(id){let p=assetRuntime.get(id);if(p)return p;const a=data.assets.find(x=>x.id===id);if(!a)throw Error('Asset inexistente');const blob=await dbGet('model:'+id);if(!blob)throw Error('Archivo no disponible en IndexedDB');const ab=await blob.arrayBuffer();const gltf=await new Promise((ok,no)=>loader.parse(ab,'',ok,no));p={scene:gltf.scene,animations:gltf.animations};assetRuntime.set(id,p);a.animations=gltf.animations.map(x=>x.name);return p}
@@ -216,12 +217,42 @@ function rotateReference(delta){
   data.reference.rotation=(((data.reference.rotation||0)+delta)%360+360)%360;
   rebuildReference();renderFloorControls();saveSoon();
 }
+async function imageSizeFromBlob(blob){
+  try{
+    const bmp=await createImageBitmap(blob),out={width:bmp.width||1,height:bmp.height||1};bmp.close?.();return out;
+  }catch{}
+  return await new Promise((ok,no)=>{
+    const u=URL.createObjectURL(blob),img=new Image();
+    img.onload=()=>{const out={width:img.naturalWidth||1,height:img.naturalHeight||1};URL.revokeObjectURL(u);ok(out)};
+    img.onerror=e=>{URL.revokeObjectURL(u);no(e)};img.src=u;
+  });
+}
+async function ensureDecalAssetMetadata(assetOrId){
+  const a=typeof assetOrId==='string'?data.decalLibrary.find(x=>x.id===assetOrId):assetOrId;if(!a)return null;
+  if(a.width>0&&a.height>0&&a.aspect>0)return a;
+  const blob=await dbGet('decal:'+a.id);if(!blob)return a;
+  try{const sz=await imageSizeFromBlob(blob);a.width=sz.width;a.height=sz.height;a.aspect=sz.width/Math.max(1,sz.height);saveSoon()}catch(e){console.warn('No pude medir decal',a.name,e)}
+  return a;
+}
 async function uploadDecal(file){
   const id=uid('decalAsset');await dbPut('decal:'+id,file);
-  let width=1,height=1;
-  try{const bmp=await createImageBitmap(file);width=bmp.width||1;height=bmp.height||1;bmp.close?.()}catch{}
+  let width=1,height=1;try{const sz=await imageSizeFromBlob(file);width=sz.width;height=sz.height}catch{}
   data.decalLibrary.push({id,name:file.name,width,height,aspect:width/Math.max(1,height)});
   window.__selectedDecalAsset=id;saveSoon();renderFloorControls();
+}
+async function deleteDecalAsset(id){
+  const a=data.decalLibrary.find(x=>x.id===id);if(!a)return;
+  const used=data.decals.filter(d=>d.assetId===id);
+  if(used.length&&!confirm(`La decal "${a.name}" está usada ${used.length} vez/veces en el plano. ¿Borrarla también del plano?`))return;
+  if(used.length){
+    used.forEach(d=>{const m=decalRuntime.get(d.id);if(m)decalGroup.remove(m);decalRuntime.delete(d.id)});
+    data.decals=data.decals.filter(d=>d.assetId!==id);
+    if(selectedDecalId&&used.some(d=>d.id===selectedDecalId))selectedDecalId=null;
+  }
+  data.decalLibrary=data.decalLibrary.filter(x=>x.id!==id);
+  if(window.__selectedDecalAsset===id)window.__selectedDecalAsset=null;
+  try{await dbDelete('decal:'+id)}catch{}
+  refreshDecalSelection();saveSoon();renderFloorControls();
 }
 async function decalTexture(id){
   const blob=await dbGet('decal:'+id);if(!blob)return null;
@@ -233,7 +264,7 @@ async function instantiateDecal(rec){
   const mat=new THREE.MeshBasicMaterial({map:tex,transparent:rec.transparent!==false,side:THREE.DoubleSide,depthWrite:false});
   const m=new THREE.Mesh(new THREE.PlaneGeometry(1,1),mat);m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(rec.rotation||0));m.position.set(rec.x||0,.008,rec.z||0);m.scale.set(rec.scaleX||1,rec.scaleY||1,1);m.userData.decalId=rec.id;decalGroup.add(m);decalRuntime.set(rec.id,m);return m;
 }
-async function rebuildDecals(){decalGroup.clear();decalRuntime.clear();for(const d of data.decals)await instantiateDecal(d);refreshDecalSelection()}
+async function rebuildDecals(){decalGroup.clear();decalRuntime.clear();for(const d of data.decals){const a=await ensureDecalAssetMetadata(d.assetId);if(a?.aspect&&(!d.aspect||d.aspect===1&&a.aspect!==1)){d.aspect=a.aspect;if(d.keepAspect!==false){const area=Math.max(.01,(d.scaleX||1)*(d.scaleY||1));d.scaleX=Math.sqrt(area*a.aspect);d.scaleY=d.scaleX/a.aspect}}await instantiateDecal(d)}refreshDecalSelection()}
 function selectedDecal(){return data.decals.find(d=>d.id===selectedDecalId)||null}
 function clearDecalSelection(){selectedDecalId=null;refreshDecalSelection()}
 function refreshDecalSelection(){
@@ -245,7 +276,7 @@ function refreshDecalSelection(){
 function setDecalSelected(id){selectedDecalId=id;selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();renderTree();renderInspector();refreshDecalSelection();$('#modeBadge').textContent=decalEdit?'DECALS':'OBJETO'}
 async function placeDecalAt(assetId,p){
   if(!assetId)return;
-  const a=data.decalLibrary.find(x=>x.id===assetId),aspect=Math.max(.0001,a?.aspect||1);
+  const a=await ensureDecalAssetMetadata(assetId),aspect=Math.max(.0001,a?.aspect||1);
   let scaleX=2,scaleY=2;
   if(aspect>=1)scaleY=2/aspect;else scaleX=2*aspect;
   const rec={id:uid('decal'),assetId,x:+p.x.toFixed(4),z:+p.z.toFixed(4),rotation:0,scaleX:+scaleX.toFixed(4),scaleY:+scaleY.toFixed(4),aspect,keepAspect:true,locked:false,transparent:false};
@@ -300,7 +331,7 @@ function updateDecalTransform(p){
 function rotateDecal(id,deg=45){const d=data.decals.find(x=>x.id===id);if(!d||d.locked)return;d.rotation=((d.rotation||0)+deg)%360;const m=decalRuntime.get(id);if(m)m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(d.rotation));saveSoon();renderFloorControls()}
 function renderFloorControls(){
   const el=$('#floorV23');if(!el)return;
-  const lib=data.decalLibrary.map(a=>`<div class="asset-row decal-library-item ${a.id===window.__selectedDecalAsset?'selected':''}" draggable="true" data-decal-asset="${a.id}"><span class="asset-name">${esc(a.name)}</span></div>`).join('')||'<div class="muted">Cargá JPG/PNG para la biblioteca.</div>';
+  const lib=data.decalLibrary.map(a=>{const meta=(a.width&&a.height)?`${a.width}×${a.height} · ${(a.aspect||1).toFixed(2)}:1`:'metadata pendiente';return `<div class="asset-row decal-library-item ${a.id===window.__selectedDecalAsset?'selected':''}" draggable="true" data-decal-asset="${a.id}"><span class="asset-name">${esc(a.name)}<small>${meta}</small></span><button class="decal-lib-delete" data-del-decal-asset="${a.id}" title="Borrar de biblioteca">×</button></div>`}).join('')||'<div class="muted">Cargá JPG/PNG para la biblioteca.</div>';
   const d=selectedDecal();
   el.innerHTML=`
   <div class="floor-layer-card"><b>Capa base</b><label class="file-button wide">Cargar imagen<input id="baseUpload" type="file" accept="image/*"></label><small>${esc(data.floor.base.name||'Sin imagen')}</small><div class="row"><label>Rep X <input id="baseRX" type="number" min="1" max="50" value="${data.floor.base.repeatX}"></label><label>Rep Y <input id="baseRY" type="number" min="1" max="50" value="${data.floor.base.repeatY}"></label></div><label><input id="baseRot" type="checkbox" ${data.floor.base.rotate90?'checked':''}> Rotar mosaicos de a 90°</label></div>
@@ -317,7 +348,8 @@ function renderFloorControls(){
   $('#referenceKeepAspect').onchange=e=>{data.reference.keepAspect=e.target.checked;saveSoon()};
   [['referenceX','x'],['referenceZ','z'],['referenceW','width'],['referenceH','height']].forEach(([id,k])=>$('#'+id).onchange=e=>{data.reference[k]=+e.target.value;rebuildReference();saveSoon()});
   $('#decalEditBtn').onclick=()=>{decalEdit=!decalEdit;decalTransform=null;draggingDecal=false;orbit.enabled=true;if(!decalEdit)clearDecalSelection();renderFloorControls();$('#modeBadge').textContent=decalEdit?'DECALS':'OBJETO'};
-  document.querySelectorAll('[data-decal-asset]').forEach(x=>{x.onclick=()=>{window.__selectedDecalAsset=x.dataset.decalAsset;renderFloorControls()};x.ondragstart=e=>{e.dataTransfer.setData('text/castorium-decal',x.dataset.decalAsset);window.__selectedDecalAsset=x.dataset.decalAsset}});
+  document.querySelectorAll('[data-decal-asset]').forEach(x=>{x.onclick=e=>{if(e.target.closest('[data-del-decal-asset]'))return;window.__selectedDecalAsset=x.dataset.decalAsset;ensureDecalAssetMetadata(x.dataset.decalAsset).then(()=>renderFloorControls())};x.ondragstart=e=>{if(e.target.closest('[data-del-decal-asset]')){e.preventDefault();return}e.dataTransfer.setData('text/castorium-decal',x.dataset.decalAsset);window.__selectedDecalAsset=x.dataset.decalAsset}});
+  document.querySelectorAll('[data-del-decal-asset]').forEach(b=>{b.onclick=e=>{e.stopPropagation();deleteDecalAsset(b.dataset.delDecalAsset)}});
   if(d){
     $('#decalLock').onchange=e=>{d.locked=e.target.checked;saveSoon()};
     $('#decalKeepAspect').onchange=e=>{d.keepAspect=e.target.checked;saveSoon()};
@@ -329,7 +361,7 @@ function renderFloorControls(){
 }
 function floorPointFromEvent(e){const ray=rayFromEvent(e),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),p=new THREE.Vector3();return ray.ray.intersectPlane(plane,p)?p:null}
 function copyFloorConfig(){
-  const out={version:'2.8',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
+  const out={version:'2.9',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
   navigator.clipboard.writeText(JSON.stringify(out,null,2)).then(()=>alert('Configuración del piso copiada. Pegámela en el chat cuando quieras hardcodearla.'));
 }
 async function uploadTile(file){const id=uid('tile');await dbPut('tile:'+id,file);data.tiles.push({id,name:file.name});currentTileId=id;saveSoon();renderTiles()}
@@ -413,7 +445,7 @@ async function undo(){
   if(lastCommittedState!==null&&current!==lastCommittedState){await restoreSnapshot(lastCommittedState);return}
   const prev=undoStack.pop();if(prev)await restoreSnapshot(prev)
 }
-async function loadLocal(){const raw=localStorage.getItem(STORAGE_KEY);if(raw)try{data=Object.assign(defaultData(),JSON.parse(raw));data.animations=Array.isArray(data.animations)?data.animations:[]}catch{}ensureFloorV23();await ensurePreset();$('#gridSize').value=data.gridSize||1;$('#floorWidth').value=data.floor.width;$('#floorDepth').value=data.floor.depth;camera.position.fromArray(data.camera?.position||[18,20,22]);orbit.target.fromArray(data.camera?.target||[0,0,0]);updateGrid();await rebuildFloorLayers();await rebuildReference();await rebuildDecals();for(const o of data.objects)await instantiate(o);renderAll();saveLocal();undoStack=[];lastCommittedState=snapshotState()}
+async function loadLocal(){const raw=localStorage.getItem(STORAGE_KEY);if(raw)try{data=Object.assign(defaultData(),JSON.parse(raw));data.animations=Array.isArray(data.animations)?data.animations:[]}catch{}ensureFloorV23();await ensurePreset();$('#gridSize').value=data.gridSize||1;$('#floorWidth').value=data.floor.width;$('#floorDepth').value=data.floor.depth;camera.position.fromArray(data.camera?.position||[18,20,22]);orbit.target.fromArray(data.camera?.target||[0,0,0]);updateGrid();await rebuildFloorLayers();await rebuildReference();for(const a of data.decalLibrary)await ensureDecalAssetMetadata(a);await rebuildDecals();for(const o of data.objects)await instantiate(o);renderAll();saveLocal();undoStack=[];lastCommittedState=snapshotState()}
 function renderAll(){renderTree();renderLayers();renderInspector();renderAssetLibrary();renderTiles();renderCatalog();renderRoutes();renderFloorControls()}
 function updateGrid(){scene.remove(grid);const s=+$('#gridSize').value||1,size=Math.max(data.floor.width,data.floor.depth)*s*1.5;grid=new THREE.GridHelper(size,Math.round(size/s),0x87919c,0x4b555f);grid.visible=$('#toggleGrid').classList.contains('active');scene.add(grid);data.gridSize=s;rebuildFloorLayers();saveSoon()}
 function exportJson(){saveLocal();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='castorium-map.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
