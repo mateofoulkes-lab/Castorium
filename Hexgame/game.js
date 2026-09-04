@@ -36,6 +36,12 @@ const DRIVER_FIT = {
   scale: [30, 30, 30]
 };
 
+const LOAD_FIT = {
+  position: [0, 0.6186, 3.1279],
+  rotationDegrees: [0, 0, 0],
+  scale: [1, 1, 1]
+};
+
 const WOOD_TYPES = {
   pine:{ id:'pine', name:'Pino', short:'PIN', icon:'🌲' },
   birch:{ id:'birch', name:'Abedul', short:'ABE', icon:'◻' },
@@ -217,8 +223,7 @@ function modelBounds(model){ model.updateMatrixWorld(true); return new THREE.Box
 function normalizeFeet(model){
   const box=modelBounds(model),center=box.getCenter(new THREE.Vector3());
   model.position.x-=center.x; model.position.z-=center.z; model.position.y-=box.min.y; model.updateMatrixWorld(true); return model;
-}
-function normalizeHeight(model,height=1){ const size=modelBounds(model).getSize(new THREE.Vector3()); if(size.y)model.scale.setScalar(height/size.y); return model; }
+}function normalizeHeight(model,height=1){ const size=modelBounds(model).getSize(new THREE.Vector3()); if(size.y)model.scale.setScalar(height/size.y); return model; }
 function shadows(root){ root.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}}); return root; }
 
 function hexGeometry(radius,depth){
@@ -336,6 +341,7 @@ function createDepot(){
 
 function createPlayer(yaleGLTF,castorGLTF,drivingFBX){
   const group=new THREE.Group(),visual=new THREE.Group(),vehicle=new THREE.Group(),cargoGroup=new THREE.Group();group.add(visual);visual.add(vehicle);vehicle.add(cargoGroup);scene.add(group);
+  cargoGroup.position.fromArray(LOAD_FIT.position);cargoGroup.rotation.set(...LOAD_FIT.rotationDegrees.map(rad));cargoGroup.scale.fromArray(LOAD_FIT.scale);
   const yale=normalizeFeet(shadows(yaleGLTF.scene));vehicle.add(yale);
   const driverPivot=new THREE.Group(),castor=normalizeFeet(shadows(castorGLTF.scene));driverPivot.add(castor);vehicle.add(driverPivot);
   driverPivot.position.fromArray(DRIVER_FIT.position);driverPivot.rotation.set(...DRIVER_FIT.rotationDegrees.map(rad));driverPivot.scale.fromArray(DRIVER_FIT.scale);
@@ -359,7 +365,7 @@ function createHelper(index){
 }
 
 function rebuildCargo(){
-  if(!player)return;player.cargoGroup.clear();state.cargo.forEach((value,i)=>{const log=new THREE.Mesh(cargoLogGeometry,new THREE.MeshStandardMaterial({color:0xa85d31,roughness:.88}));log.position.set((i%2-.5)*.48,.65+Math.floor(i/2)*.34,1.86);log.rotation.y=(i%2)*.1;log.castShadow=true;player.cargoGroup.add(log)});renderCargo();
+  if(!player)return;player.cargoGroup.clear();state.cargo.forEach((value,i)=>{const log=new THREE.Mesh(cargoLogGeometry,new THREE.MeshStandardMaterial({color:0xa85d31,roughness:.88}));log.position.set((i%2-.5)*.48,Math.floor(i/2)*.34,0);log.rotation.y=(i%2)*.1;log.castShadow=true;player.cargoGroup.add(log)});renderCargo();
 }
 
 async function loadAssets(){
@@ -497,8 +503,7 @@ function updatePlayer(dt){
   audio.setEngine(clamp(Math.abs(player.speed)/maxSpeed,0,1));
   if(depot&&player.group.position.distanceTo(depot.position)<1.6)deliverCargo();
   resources.forEach(tree=>{if(tree.active&&tree.group.getWorldPosition(new THREE.Vector3()).distanceTo(player.group.position)<1.0)harvestTree(tree)});  logs.slice().forEach(log=>{const d=log.mesh.position.distanceTo(player.group.position);if(d<magnetRadius()&&state.cargo.length<capacity()){log.mesh.position.lerp(player.group.position.clone().add(new THREE.Vector3(0,.65,0)),clamp(dt*(7+state.upgrades.magnet),0,1));if(d<.65)collectLog(log)}});
-  player.targetRing.rotation.z+=dt*.9;state.player={x:player.group.position.x,z:player.group.position.z,yaw:player.yaw};
-}
+  player.targetRing.rotation.z+=dt*.9;state.player={x:player.group.position.x,z:player.group.position.z,yaw:player.yaw};}
 
 function updateResources(dt){
   resources.forEach(tree=>{if(!tree.active){tree.regen-=dt;if(tree.regen<=0){tree.active=true;tree.group.visible=true;tree.group.scale.set(.01,.01,.01);tween(tree.group.scale,{x:tree.baseScale.x,y:tree.baseScale.y,z:tree.baseScale.z},.55,'back');burst(tree.group.getWorldPosition(new THREE.Vector3()).setY(.8),tree.tile.biome.leaf,8,.8)}}});
