@@ -6,3 +6,5 @@
 .reference-card.editing{outline:2px solid #ffd54a;background:#25271d}.reference-actions button{flex:1}.reference-card .reference-actions{gap:4px}.reference-card .reference-actions button.active{outline:2px solid #ffd54a}
 
 .decal-card.editing{outline:2px solid #69c9ff;background:#182631}.decal-card>#decalEditBtn{width:100%;margin:4px 0 7px}.decal-card>#decalEditBtn.active{outline:2px solid #69c9ff}.decal-selected-panel .row button{flex:1}
+
+.decal-library-item .asset-name{display:flex;flex-direction:column;gap:2px}.decal-library-item .asset-name small{font-size:9px;opacity:.65}.decal-lib-delete{margin-left:auto;flex:0 0 auto}
