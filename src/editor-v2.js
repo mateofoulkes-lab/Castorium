@@ -43,11 +43,11 @@ let grid=new THREE.GridHelper(60,60,0x87919c,0x4b555f);scene.add(grid);
 const floorGroup=new THREE.Group();scene.add(floorGroup);const referenceGroup=new THREE.Group();scene.add(referenceGroup);const decalGroup=new THREE.Group();scene.add(decalGroup);const objectGroup=new THREE.Group();scene.add(objectGroup);const routeGroup=new THREE.Group();scene.add(routeGroup);
 const loader=new GLTFLoader();const fbxLoader=new FBXLoader();const textureLoader=new THREE.TextureLoader();const clock=new THREE.Clock();
 
-let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,routeGhostInfo=null,currentTileId=null,floorPaint=false,eraseFloorMode=false,selectedDecalId=null,draggingDecal=false,decalEdit=false,decalTransform=null,lastFloorPointer=null,referenceEdit=false,referenceDrag=null;
+let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,routeGhostInfo=null,currentTileId=null,floorPaint=false,eraseFloorMode=false,selectedDecalId=null,draggingDecal=false,decalEdit=false,decalTransform=null,decalRepeatMode=false,lastFloorPointer=null,referenceEdit=false,referenceDrag=null;
 const runtime=new Map(),assetRuntime=new Map(),animationRuntime=new Map(),repoAnimationRuntime=new Map(),decalRuntime=new Map(),mixers=new Map();
 let selectionBox=null,decalSelectionBox=null,activeAxis=null;
 let undoStack=[],lastCommittedState=null,isRestoringHistory=false;
-function defaultData(){return {version:2.9,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
+function defaultData(){return {version:2.10,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
 function isCharacterKind(kind){return info(kind).group==='Personajes'}
 function uid(p='id'){return p+'-'+Math.random().toString(36).slice(2,9)}
 function t0(){return {position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1}}}
@@ -261,8 +261,8 @@ async function decalTexture(id){
 async function instantiateDecal(rec){
   const old=decalRuntime.get(rec.id);if(old){decalGroup.remove(old);decalRuntime.delete(rec.id)}
   const tex=await decalTexture(rec.assetId);if(!tex)return;
-  const mat=new THREE.MeshBasicMaterial({map:tex,transparent:rec.transparent!==false,side:THREE.DoubleSide,depthWrite:false});
-  const m=new THREE.Mesh(new THREE.PlaneGeometry(1,1),mat);m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(rec.rotation||0));m.position.set(rec.x||0,.008,rec.z||0);m.scale.set(rec.scaleX||1,rec.scaleY||1,1);m.userData.decalId=rec.id;decalGroup.add(m);decalRuntime.set(rec.id,m);return m;
+  const mat=new THREE.MeshBasicMaterial({map:tex,transparent:rec.transparent!==false,side:THREE.DoubleSide,depthWrite:false,depthTest:false});
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(1,1),mat);m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(rec.rotation||0));m.position.set(rec.x||0,.015,rec.z||0);m.scale.set(rec.scaleX||1,rec.scaleY||1,1);m.renderOrder=600;m.userData.decalId=rec.id;decalGroup.add(m);decalRuntime.set(rec.id,m);return m;
 }
 async function rebuildDecals(){decalGroup.clear();decalRuntime.clear();for(const d of data.decals){const a=await ensureDecalAssetMetadata(d.assetId);if(a?.aspect&&(!d.aspect||d.aspect===1&&a.aspect!==1)){d.aspect=a.aspect;if(d.keepAspect!==false){const area=Math.max(.01,(d.scaleX||1)*(d.scaleY||1));d.scaleX=Math.sqrt(area*a.aspect);d.scaleY=d.scaleX/a.aspect}}await instantiateDecal(d)}refreshDecalSelection()}
 function selectedDecal(){return data.decals.find(d=>d.id===selectedDecalId)||null}
@@ -284,13 +284,24 @@ async function placeDecalAt(assetId,p){
 }
 async function duplicateDecal(){
   const d=selectedDecal();if(!d)return;
-  const c=structuredClone(d);c.id=uid('decal');c.x=+(c.x+.35).toFixed(4);c.z=+(c.z+.35).toFixed(4);
+  const c=structuredClone(d);c.id=uid('decal');
+  data.decals.push(c);await instantiateDecal(c);setDecalSelected(c.id);saveSoon();
+}
+async function repeatDecal(dir){
+  const d=selectedDecal();if(!d||d.locked)return;
+  const c=structuredClone(d);c.id=uid('decal');
+  const a=THREE.MathUtils.degToRad(d.rotation||0),ux=Math.cos(a),uz=Math.sin(a),vx=-Math.sin(a),vz=Math.cos(a);
+  if(dir==='right'){c.x+=ux*d.scaleX;c.z+=uz*d.scaleX}
+  else if(dir==='left'){c.x-=ux*d.scaleX;c.z-=uz*d.scaleX}
+  else if(dir==='up'){c.x+=vx*d.scaleY;c.z+=vz*d.scaleY}
+  else if(dir==='down'){c.x-=vx*d.scaleY;c.z-=vz*d.scaleY}
+  c.x=+c.x.toFixed(4);c.z=+c.z.toFixed(4);
   data.decals.push(c);await instantiateDecal(c);setDecalSelected(c.id);saveSoon();
 }
 function cancelDecalTransform(){
   if(!decalTransform)return;
   const d=selectedDecal();
-  if(d&&decalTransform.start){Object.assign(d,decalTransform.start);const m=decalRuntime.get(d.id);if(m){m.position.set(d.x,.008,d.z);m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(d.rotation||0));m.scale.set(d.scaleX,d.scaleY,1)}}
+  if(d&&decalTransform.start){Object.assign(d,decalTransform.start);const m=decalRuntime.get(d.id);if(m){m.position.set(d.x,.015,d.z);m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(d.rotation||0));m.scale.set(d.scaleX,d.scaleY,1)}}
   decalTransform=null;orbit.enabled=true;refreshDecalSelection();renderFloorControls();
 }
 function confirmDecalTransform(){if(!decalTransform)return;decalTransform=null;orbit.enabled=true;saveSoon();renderFloorControls()}
@@ -302,7 +313,7 @@ function beginDecalTransform(mode){
     startAngle:Math.atan2(p.z-d.z,p.x-d.x),startDist:Math.max(.001,p.distanceTo(center))};
   orbit.enabled=false;$('#modeBadge').textContent='DECAL · '+(mode==='move'?'MOVER':mode==='rotate'?'ROTAR':'ESCALAR');
 }
-function updateDecalTransform(p){
+function updateDecalTransform(p,event=null){
   const d=selectedDecal(),t=decalTransform;if(!d||!t)return;
   if(t.mode==='move'){
     const dx=p.x-t.origin.x,dz=p.z-t.origin.z;
@@ -310,7 +321,9 @@ function updateDecalTransform(p){
     d.z=+(t.start.z+(activeAxis==='x'?0:dz)).toFixed(4);
   }else if(t.mode==='rotate'){
     const a=Math.atan2(p.z-d.z,p.x-d.x),delta=THREE.MathUtils.radToDeg(a-t.startAngle);
-    d.rotation=+(t.start.rotation+delta).toFixed(2);
+    let rotation=t.start.rotation+delta;
+    if(event?.ctrlKey||event?.metaKey)rotation=Math.round(rotation/45)*45;
+    d.rotation=+rotation.toFixed(2);
   }else if(t.mode==='scale'){
     const dx=Math.abs(p.x-t.center.x),dz=Math.abs(p.z-t.center.z);
     if(activeAxis==='x'){d.scaleX=Math.max(.05,dx*2)}
@@ -325,7 +338,7 @@ function updateDecalTransform(p){
       else if(activeAxis==='y')d.scaleX=d.scaleY*aspect;
     }
   }
-  const m=decalRuntime.get(d.id);if(m){m.position.set(d.x,.008,d.z);m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(d.rotation||0));m.scale.set(d.scaleX,d.scaleY,1)}
+  const m=decalRuntime.get(d.id);if(m){m.position.set(d.x,.015,d.z);m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(d.rotation||0));m.scale.set(d.scaleX,d.scaleY,1)}
   decalSelectionBox?.update();renderFloorControls();
 }
 function rotateDecal(id,deg=45){const d=data.decals.find(x=>x.id===id);if(!d||d.locked)return;d.rotation=((d.rotation||0)+deg)%360;const m=decalRuntime.get(id);if(m)m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(d.rotation));saveSoon();renderFloorControls()}
@@ -335,19 +348,19 @@ function renderFloorControls(){
   const d=selectedDecal();
   el.innerHTML=`
   <div class="floor-layer-card"><b>Capa base</b><label class="file-button wide">Cargar imagen<input id="baseUpload" type="file" accept="image/*"></label><small>${esc(data.floor.base.name||'Sin imagen')}</small><div class="row"><label>Rep X <input id="baseRX" type="number" min="1" max="50" value="${data.floor.base.repeatX}"></label><label>Rep Y <input id="baseRY" type="number" min="1" max="50" value="${data.floor.base.repeatY}"></label></div><label><input id="baseRot" type="checkbox" ${data.floor.base.rotate90?'checked':''}> Rotar mosaicos de a 90°</label></div>
-  <div class="floor-layer-card decal-card ${decalEdit?'editing':''}"><b>Decals</b><button id="decalEditBtn" class="${decalEdit?'active':''}">${decalEdit?'✓ Edición de decals':'✥ Edición de decals'}</button><label class="file-button wide">Agregar JPG / PNG<input id="decalUpload" type="file" accept="image/jpeg,image/png,image/webp"></label><small>En modo edición: click selecciona · G mover · R rotar · S escalar · X/Y restringir · Ctrl+D duplicar · Delete borrar. Ctrl+click coloca la decal elegida.</small><div id="decalLibraryV23">${lib}</div>${d?`<div class="decal-selected-panel"><b>Seleccionada</b><label><input id="decalLock" type="checkbox" ${d.locked?'checked':''}> Bloquear posición</label><label><input id="decalKeepAspect" type="checkbox" ${d.keepAspect!==false?'checked':''}> Mantener proporción original</label><div class="row"><label>Ancho <input id="decalSX" type="number" step=".1" value="${(+d.scaleX).toFixed(3)}"></label><label>Alto <input id="decalSY" type="number" step=".1" value="${(+d.scaleY).toFixed(3)}"></label></div><small>Rotación: ${(+d.rotation||0).toFixed(1)}°</small><div class="row"><button id="duplicateDecal">Ctrl+D Duplicar</button><button id="deleteDecal">Eliminar decal</button></div></div>`:''}</div>
+  <div class="floor-layer-card decal-card ${decalEdit?'editing':''}"><b>Decals</b><button id="decalEditBtn" class="${decalEdit?'active':''}">${decalEdit?'✓ Edición de decals':'✥ Edición de decals'}</button><label class="file-button wide">Agregar JPG / PNG<input id="decalUpload" type="file" accept="image/jpeg,image/png,image/webp"></label><small>En modo edición: click selecciona · G mover · R rotar · S escalar · P repetir · X/Y restringir · Ctrl+D duplicar · Delete borrar. En R, Ctrl snapea a 45°. Ctrl+click coloca la decal elegida.</small><div id="decalLibraryV23">${lib}</div>${d?`<div class="decal-selected-panel"><b>Seleccionada</b><label><input id="decalLock" type="checkbox" ${d.locked?'checked':''}> Bloquear posición</label><label><input id="decalKeepAspect" type="checkbox" ${d.keepAspect!==false?'checked':''}> Mantener proporción original</label><div class="row"><label>Ancho <input id="decalSX" type="number" step=".1" value="${(+d.scaleX).toFixed(3)}"></label><label>Alto <input id="decalSY" type="number" step=".1" value="${(+d.scaleY).toFixed(3)}"></label></div><small>Rotación: ${(+d.rotation||0).toFixed(1)}° · durante R: Ctrl = snap 45°</small><button id="decalRepeatBtn" class="${decalRepeatMode?'active':''}">P · Repetir decal</button>${decalRepeatMode?`<div class="decal-repeat-pad"><span></span><button data-repeat-dir="up">↑</button><span></span><button data-repeat-dir="left">←</button><button data-repeat-dir="down">↓</button><button data-repeat-dir="right">→</button></div><small>Las flechas siguen los ejes rotados de la decal.</small>`:''}<div class="row"><button id="duplicateDecal">Ctrl+D Duplicar</button><button id="deleteDecal">Eliminar decal</button></div></div>`:''}</div>
   <div class="floor-layer-card reference-card ${referenceEdit?'editing':''}"><b>Imagen de referencia</b><label class="file-button wide">Cargar referencia<input id="referenceUpload" type="file" accept="image/*"></label><small>${esc(data.reference.name||'Sin imagen')}</small><label><input id="referenceVisible" type="checkbox" ${data.reference.visible!==false?'checked':''}> Mostrar referencia</label><label>Transparencia <input id="referenceOpacity" type="range" min="0" max="1" step=".05" value="${data.reference.opacity}"><span id="referenceOpacityValue">${Math.round((data.reference.opacity||0)*100)}%</span></label><div class="row reference-actions"><button id="referenceEditBtn" class="${referenceEdit?'active':''}">${referenceEdit?'✓ Editando':'✥ Editar referencia'}</button><button id="referenceRotL">↶ 90°</button><button id="referenceRotR">↷ 90°</button></div><label><input id="referenceKeepAspect" type="checkbox" ${data.reference.keepAspect!==false?'checked':''}> Mantener proporción al redimensionar</label><div class="row"><label>X <input id="referenceX" type="number" step=".1" value="${data.reference.x}"></label><label>Z <input id="referenceZ" type="number" step=".1" value="${data.reference.z}"></label></div><div class="row"><label>Ancho <input id="referenceW" type="number" min=".1" step=".1" value="${data.reference.width}"></label><label>Alto <input id="referenceH" type="number" min=".1" step=".1" value="${data.reference.height}"></label></div><small>${referenceEdit?'Arrastrá la imagen para moverla. Arrastrá una esquina amarilla para redimensionarla.':'Fuera del modo Editar no recibe clicks ni interfiere con la escena.'}</small></div>
   <div class="floor-layer-card"><b>Capa mugre</b><label class="file-button wide">Cargar PNG con alfa<input id="dirtUpload" type="file" accept="image/png,image/webp"></label><small>${esc(data.floor.dirt.name||'Sin imagen')}</small><div class="row"><label>Rep X <input id="dirtRX" type="number" min="1" max="50" value="${data.floor.dirt.repeatX}"></label><label>Rep Y <input id="dirtRY" type="number" min="1" max="50" value="${data.floor.dirt.repeatY}"></label></div><label><input id="dirtRot" type="checkbox" ${data.floor.dirt.rotate90?'checked':''}> Rotar mosaicos de a 90°</label></div>`;
   $('#baseUpload').onchange=e=>e.target.files[0]&&uploadFloorLayer(e.target.files[0],'base');$('#dirtUpload').onchange=e=>e.target.files[0]&&uploadFloorLayer(e.target.files[0],'dirt');$('#decalUpload').onchange=e=>e.target.files[0]&&uploadDecal(e.target.files[0]);$('#referenceUpload').onchange=e=>e.target.files[0]&&uploadReference(e.target.files[0]);
-  [['baseRX','base','repeatX'],['baseRY','base','repeatY'],['dirtRX','dirt','repeatX'],['dirtRY','dirt','repeatY']].forEach(([id,l,k])=>$('#'+id).onchange=e=>{data.floor[l][k]=Math.max(1,+e.target.value||1);rebuildFloorLayers();saveSoon()});
-  $('#baseRot').onchange=e=>{data.floor.base.rotate90=e.target.checked;rebuildFloorLayers();saveSoon()};$('#dirtRot').onchange=e=>{data.floor.dirt.rotate90=e.target.checked;rebuildFloorLayers();saveSoon()};
+  [['baseRX','base','repeatX'],['baseRY','base','repeatY'],['dirtRX','dirt','repeatX'],['dirtRY','dirt','repeatY']].forEach(([id,l,k])=>$('#'+id).onchange=async e=>{data.floor[l][k]=Math.max(1,+e.target.value||1);await rebuildFloorLayers();await rebuildDecals();saveSoon()});
+  $('#baseRot').onchange=async e=>{data.floor.base.rotate90=e.target.checked;await rebuildFloorLayers();await rebuildDecals();saveSoon()};$('#dirtRot').onchange=async e=>{data.floor.dirt.rotate90=e.target.checked;await rebuildFloorLayers();await rebuildDecals();saveSoon()};
   $('#referenceVisible').onchange=e=>{data.reference.visible=e.target.checked;rebuildReference();saveSoon()};
   $('#referenceOpacity').oninput=e=>{data.reference.opacity=+e.target.value;$('#referenceOpacityValue').textContent=Math.round(data.reference.opacity*100)+'%';rebuildReference();saveSoon()};
   $('#referenceEditBtn').onclick=()=>{referenceEdit=!referenceEdit;referenceDrag=null;orbit.enabled=true;rebuildReference();renderFloorControls()};
   $('#referenceRotL').onclick=()=>rotateReference(-90);$('#referenceRotR').onclick=()=>rotateReference(90);
   $('#referenceKeepAspect').onchange=e=>{data.reference.keepAspect=e.target.checked;saveSoon()};
   [['referenceX','x'],['referenceZ','z'],['referenceW','width'],['referenceH','height']].forEach(([id,k])=>$('#'+id).onchange=e=>{data.reference[k]=+e.target.value;rebuildReference();saveSoon()});
-  $('#decalEditBtn').onclick=()=>{decalEdit=!decalEdit;decalTransform=null;draggingDecal=false;orbit.enabled=true;if(!decalEdit)clearDecalSelection();renderFloorControls();$('#modeBadge').textContent=decalEdit?'DECALS':'OBJETO'};
+  $('#decalEditBtn').onclick=()=>{decalEdit=!decalEdit;decalTransform=null;decalRepeatMode=false;draggingDecal=false;orbit.enabled=true;if(!decalEdit)clearDecalSelection();renderFloorControls();$('#modeBadge').textContent=decalEdit?'DECALS':'OBJETO'};
   document.querySelectorAll('[data-decal-asset]').forEach(x=>{x.onclick=e=>{if(e.target.closest('[data-del-decal-asset]'))return;window.__selectedDecalAsset=x.dataset.decalAsset;ensureDecalAssetMetadata(x.dataset.decalAsset).then(()=>renderFloorControls())};x.ondragstart=e=>{if(e.target.closest('[data-del-decal-asset]')){e.preventDefault();return}e.dataTransfer.setData('text/castorium-decal',x.dataset.decalAsset);window.__selectedDecalAsset=x.dataset.decalAsset}});
   document.querySelectorAll('[data-del-decal-asset]').forEach(b=>{b.onclick=e=>{e.stopPropagation();deleteDecalAsset(b.dataset.delDecalAsset)}});
   if(d){
@@ -355,13 +368,15 @@ function renderFloorControls(){
     $('#decalKeepAspect').onchange=e=>{d.keepAspect=e.target.checked;saveSoon()};
     $('#decalSX').onchange=e=>{d.scaleX=Math.max(.05,+e.target.value||1);if(d.keepAspect!==false)d.scaleY=d.scaleX/Math.max(.0001,d.aspect||1);decalRuntime.get(d.id)?.scale.set(d.scaleX,d.scaleY,1);refreshDecalSelection();saveSoon();renderFloorControls()};
     $('#decalSY').onchange=e=>{d.scaleY=Math.max(.05,+e.target.value||1);if(d.keepAspect!==false)d.scaleX=d.scaleY*Math.max(.0001,d.aspect||1);decalRuntime.get(d.id)?.scale.set(d.scaleX,d.scaleY,1);refreshDecalSelection();saveSoon();renderFloorControls()};
+    $('#decalRepeatBtn').onclick=()=>{decalRepeatMode=!decalRepeatMode;renderFloorControls()};
+    document.querySelectorAll('[data-repeat-dir]').forEach(b=>b.onclick=()=>repeatDecal(b.dataset.repeatDir));
     $('#duplicateDecal').onclick=duplicateDecal;
     $('#deleteDecal').onclick=()=>{decalGroup.remove(decalRuntime.get(d.id));decalRuntime.delete(d.id);data.decals=data.decals.filter(x=>x.id!==d.id);selectedDecalId=null;saveSoon();refreshDecalSelection();renderFloorControls()}
   }
 }
 function floorPointFromEvent(e){const ray=rayFromEvent(e),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),p=new THREE.Vector3();return ray.ray.intersectPlane(plane,p)?p:null}
 function copyFloorConfig(){
-  const out={version:'2.9',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
+  const out={version:'2.10',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
   navigator.clipboard.writeText(JSON.stringify(out,null,2)).then(()=>alert('Configuración del piso copiada. Pegámela en el chat cuando quieras hardcodearla.'));
 }
 async function uploadTile(file){const id=uid('tile');await dbPut('tile:'+id,file);data.tiles.push({id,name:file.name});currentTileId=id;saveSoon();renderTiles()}
@@ -392,7 +407,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button
 if(floorPaint){const h=ray.intersectObjects(floorGroup.children,false).find(x=>x.object.userData.floorCell);if(!h)return;const k=h.object.userData.floorCell.key;if(e.button===2){e.preventDefault();const old=data.floor.cells[k];if(old){const cell=typeof old==='string'?{tileId:old,rotation:0}:old;cell.rotation=((cell.rotation||0)+90)%360;data.floor.cells[k]=cell}else if(currentTileId&&!eraseFloorMode)data.floor.cells[k]={tileId:currentTileId,rotation:90}}else{if(eraseFloorMode||!currentTileId)delete data.floor.cells[k];else data.floor.cells[k]={tileId:currentTileId,rotation:0}}rebuildFloor();saveSoon();return}if(e.button!==0)return;const hits=ray.intersectObjects(objectGroup.children,true).filter(h=>!h.object.userData?.editorLabel);for(const h of hits){const id=recordIdFromHit(h.object);if(id){select(id);return}}});
 renderer.domElement.addEventListener('pointermove',e=>{
   const fp=floorPointFromEvent(e);if(fp)lastFloorPointer=fp.clone();
-  if(decalTransform&&fp){updateDecalTransform(fp);return}
+  if(decalTransform&&fp){updateDecalTransform(fp,e);return}
   if(referenceDrag){
     const p=floorPointFromEvent(e);if(!p)return;
     if(referenceDrag.mode==='move'){data.reference.x=+(p.x+referenceDrag.offsetX).toFixed(4);data.reference.z=+(p.z+referenceDrag.offsetZ).toFixed(4)}
@@ -405,7 +420,7 @@ renderer.domElement.addEventListener('pointermove',e=>{
     }
     rebuildReference();saveSoon();return;
   }
-  if(!draggingDecal||!selectedDecalId)return;const d=selectedDecal();if(!d||d.locked)return;const p=floorPointFromEvent(e);if(!p)return;d.x=+p.x.toFixed(4);d.z=+p.z.toFixed(4);const m=decalRuntime.get(d.id);if(m)m.position.set(d.x,.008,d.z);saveSoon()
+  if(!draggingDecal||!selectedDecalId)return;const d=selectedDecal();if(!d||d.locked)return;const p=floorPointFromEvent(e);if(!p)return;d.x=+p.x.toFixed(4);d.z=+p.z.toFixed(4);const m=decalRuntime.get(d.id);if(m)m.position.set(d.x,.015,d.z);saveSoon()
 });
 window.addEventListener('pointerup',()=>{if(referenceDrag){referenceDrag=null;orbit.enabled=true;renderFloorControls()}if(draggingDecal){draggingDecal=false;orbit.enabled=true}});
 renderer.domElement.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('text/castorium-decal'))e.preventDefault()});
@@ -459,6 +474,7 @@ window.addEventListener('keydown',e=>{
   if(decalEdit&&k==='g'){beginDecalTransform('move');return}
   if(decalEdit&&k==='r'){beginDecalTransform('rotate');return}
   if(decalEdit&&k==='s'){beginDecalTransform('scale');return}
+  if(decalEdit&&k==='p'){decalRepeatMode=!decalRepeatMode;renderFloorControls();$('#modeBadge').textContent=decalRepeatMode?'DECAL · REPETIR':'DECALS';return}
   if(decalEdit&&(k==='x'||k==='y')){toggleAxis(k);return}
   if(decalEdit&&e.key==='Delete'){const d=selectedDecal();if(d){decalGroup.remove(decalRuntime.get(d.id));decalRuntime.delete(d.id);data.decals=data.decals.filter(x=>x.id!==d.id);selectedDecalId=null;refreshDecalSelection();saveSoon()}return}
   if(decalEdit&&k==='escape'){if(decalTransform)cancelDecalTransform();else{showAllAxes();clearDecalSelection();$('#modeBadge').textContent='DECALS'}return}
