@@ -36,10 +36,10 @@ let grid=new THREE.GridHelper(60,60,0x87919c,0x4b555f);scene.add(grid);
 const floorGroup=new THREE.Group();scene.add(floorGroup);const referenceGroup=new THREE.Group();scene.add(referenceGroup);const decalGroup=new THREE.Group();scene.add(decalGroup);const objectGroup=new THREE.Group();scene.add(objectGroup);const routeGroup=new THREE.Group();scene.add(routeGroup);
 const loader=new GLTFLoader();const textureLoader=new THREE.TextureLoader();const clock=new THREE.Clock();
 
-let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,routeGhostInfo=null,currentTileId=null,floorPaint=false,eraseFloorMode=false,selectedDecalId=null,draggingDecal=false;
+let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,routeGhostInfo=null,currentTileId=null,floorPaint=false,eraseFloorMode=false,selectedDecalId=null,draggingDecal=false,referenceEdit=false,referenceDrag=null;
 const runtime=new Map(),assetRuntime=new Map(),animationRuntime=new Map(),decalRuntime=new Map(),mixers=new Map();
 let selectionBox=null,decalSelectionBox=null;
-function defaultData(){return {version:2.4,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
+function defaultData(){return {version:2.5,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
 function isCharacterKind(kind){return info(kind).group==='Personajes'}
 function uid(p='id'){return p+'-'+Math.random().toString(36).slice(2,9)}
 function t0(){return {position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1}}}
@@ -115,7 +115,7 @@ function ensureFloorV23(){
   data.floor.dirt=Object.assign({name:null,repeatX:6,repeatY:4,rotate90:false},data.floor.dirt||{});
   data.decals=Array.isArray(data.decals)?data.decals:[];
   data.decalLibrary=Array.isArray(data.decalLibrary)?data.decalLibrary:[];
-  data.reference=Object.assign({name:null,visible:true,opacity:.45,x:0,z:0,width:data.floor.width||30,height:data.floor.depth||20},data.reference||{});
+  data.reference=Object.assign({name:null,visible:true,opacity:.45,x:0,z:0,width:data.floor.width||30,height:data.floor.depth||20,rotation:0,keepAspect:true},data.reference||{});
 }
 async function uploadFloorLayer(file,layer){
   await dbPut('floor:'+layer,file);
@@ -160,8 +160,27 @@ async function rebuildReference(){
   const blob=await dbGet('reference:image');if(!blob)return;
   const tex=await new Promise((ok,no)=>{const u=URL.createObjectURL(blob);textureLoader.load(u,t=>{URL.revokeObjectURL(u);t.colorSpace=THREE.SRGBColorSpace;ok(t)},undefined,no)});
   const mat=new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:Math.max(0,Math.min(1,+cfg.opacity||0)),side:THREE.DoubleSide,depthWrite:false,depthTest:false});
-  const m=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(.01,+cfg.width||1),Math.max(.01,+cfg.height||1)),mat);
-  m.rotation.x=-Math.PI/2;m.position.set(+cfg.x||0,.02,+cfg.z||0);m.renderOrder=800;referenceGroup.add(m);
+  const w=Math.max(.01,+cfg.width||1),h=Math.max(.01,+cfg.height||1),a=THREE.MathUtils.degToRad(cfg.rotation||0);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
+  m.rotation.set(-Math.PI/2,0,a);m.position.set(+cfg.x||0,.02,+cfg.z||0);m.renderOrder=800;m.userData.referenceBody=true;referenceGroup.add(m);
+  if(referenceEdit){
+    const linePts=[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2],[-w/2,-h/2]].map(([x,y])=>new THREE.Vector3(x,y,.001));
+    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts),new THREE.LineBasicMaterial({color:0xffd54a,depthTest:false}));
+    line.rotation.copy(m.rotation);line.position.copy(m.position);line.renderOrder=901;referenceGroup.add(line);
+    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([sx,sy])=>{
+      const local=new THREE.Vector3(sx*w/2,sy*h/2,0);const world=m.localToWorld(local.clone());
+      const handle=new THREE.Mesh(new THREE.SphereGeometry(Math.max(.12,Math.min(w,h)*.018),12,8),new THREE.MeshBasicMaterial({color:0xffd54a,depthTest:false}));
+      handle.position.copy(world);handle.position.y=.035;handle.userData.referenceHandle={sx,sy};handle.renderOrder=902;referenceGroup.add(handle);
+    });
+  }
+}
+function referenceBasis(){
+  const a=THREE.MathUtils.degToRad(data.reference.rotation||0);
+  return {u:new THREE.Vector3(Math.cos(a),0,-Math.sin(a)),v:new THREE.Vector3(Math.sin(a),0,Math.cos(a))};
+}
+function rotateReference(delta){
+  data.reference.rotation=(((data.reference.rotation||0)+delta)%360+360)%360;
+  rebuildReference();renderFloorControls();saveSoon();
 }
 async function uploadDecal(file){
   const id=uid('decalAsset');await dbPut('decal:'+id,file);data.decalLibrary.push({id,name:file.name});saveSoon();renderFloorControls();
@@ -198,20 +217,23 @@ function renderFloorControls(){
   el.innerHTML=`
   <div class="floor-layer-card"><b>Capa base</b><label class="file-button wide">Cargar imagen<input id="baseUpload" type="file" accept="image/*"></label><small>${esc(data.floor.base.name||'Sin imagen')}</small><div class="row"><label>Rep X <input id="baseRX" type="number" min="1" max="50" value="${data.floor.base.repeatX}"></label><label>Rep Y <input id="baseRY" type="number" min="1" max="50" value="${data.floor.base.repeatY}"></label></div><label><input id="baseRot" type="checkbox" ${data.floor.base.rotate90?'checked':''}> Rotar mosaicos de a 90°</label></div>
   <div class="floor-layer-card"><b>Decals</b><label class="file-button wide">Agregar JPG / PNG<input id="decalUpload" type="file" accept="image/jpeg,image/png,image/webp"></label><small>Arrastrá al viewport o seleccioná y Ctrl+click. Click derecho sobre decal: +45°.</small><div id="decalLibraryV23">${lib}</div>${d?`<div class="decal-selected-panel"><b>Seleccionada</b><label><input id="decalLock" type="checkbox" ${d.locked?'checked':''}> Bloquear posición</label><div class="row"><label>Ancho <input id="decalSX" type="number" step=".1" value="${d.scaleX}"></label><label>Alto <input id="decalSY" type="number" step=".1" value="${d.scaleY}"></label></div><small>Rotación: ${d.rotation||0}°</small><button id="deleteDecal">Eliminar decal</button></div>`:''}</div>
-  <div class="floor-layer-card reference-card"><b>Imagen de referencia</b><label class="file-button wide">Cargar referencia<input id="referenceUpload" type="file" accept="image/*"></label><small>${esc(data.reference.name||'Sin imagen')}</small><label><input id="referenceVisible" type="checkbox" ${data.reference.visible!==false?'checked':''}> Mostrar referencia</label><label>Transparencia <input id="referenceOpacity" type="range" min="0" max="1" step=".05" value="${data.reference.opacity}"><span id="referenceOpacityValue">${Math.round((data.reference.opacity||0)*100)}%</span></label><div class="row"><label>X <input id="referenceX" type="number" step=".1" value="${data.reference.x}"></label><label>Z <input id="referenceZ" type="number" step=".1" value="${data.reference.z}"></label></div><div class="row"><label>Ancho <input id="referenceW" type="number" min=".1" step=".1" value="${data.reference.width}"></label><label>Alto <input id="referenceH" type="number" min=".1" step=".1" value="${data.reference.height}"></label></div><small>No es seleccionable ni recibe clicks; es sólo una guía visual del editor.</small></div>
+  <div class="floor-layer-card reference-card ${referenceEdit?'editing':''}"><b>Imagen de referencia</b><label class="file-button wide">Cargar referencia<input id="referenceUpload" type="file" accept="image/*"></label><small>${esc(data.reference.name||'Sin imagen')}</small><label><input id="referenceVisible" type="checkbox" ${data.reference.visible!==false?'checked':''}> Mostrar referencia</label><label>Transparencia <input id="referenceOpacity" type="range" min="0" max="1" step=".05" value="${data.reference.opacity}"><span id="referenceOpacityValue">${Math.round((data.reference.opacity||0)*100)}%</span></label><div class="row reference-actions"><button id="referenceEditBtn" class="${referenceEdit?'active':''}">${referenceEdit?'✓ Editando':'✥ Editar referencia'}</button><button id="referenceRotL">↶ 90°</button><button id="referenceRotR">↷ 90°</button></div><label><input id="referenceKeepAspect" type="checkbox" ${data.reference.keepAspect!==false?'checked':''}> Mantener proporción al redimensionar</label><div class="row"><label>X <input id="referenceX" type="number" step=".1" value="${data.reference.x}"></label><label>Z <input id="referenceZ" type="number" step=".1" value="${data.reference.z}"></label></div><div class="row"><label>Ancho <input id="referenceW" type="number" min=".1" step=".1" value="${data.reference.width}"></label><label>Alto <input id="referenceH" type="number" min=".1" step=".1" value="${data.reference.height}"></label></div><small>${referenceEdit?'Arrastrá la imagen para moverla. Arrastrá una esquina amarilla para redimensionarla.':'Fuera del modo Editar no recibe clicks ni interfiere con la escena.'}</small></div>
   <div class="floor-layer-card"><b>Capa mugre</b><label class="file-button wide">Cargar PNG con alfa<input id="dirtUpload" type="file" accept="image/png,image/webp"></label><small>${esc(data.floor.dirt.name||'Sin imagen')}</small><div class="row"><label>Rep X <input id="dirtRX" type="number" min="1" max="50" value="${data.floor.dirt.repeatX}"></label><label>Rep Y <input id="dirtRY" type="number" min="1" max="50" value="${data.floor.dirt.repeatY}"></label></div><label><input id="dirtRot" type="checkbox" ${data.floor.dirt.rotate90?'checked':''}> Rotar mosaicos de a 90°</label></div>`;
   $('#baseUpload').onchange=e=>e.target.files[0]&&uploadFloorLayer(e.target.files[0],'base');$('#dirtUpload').onchange=e=>e.target.files[0]&&uploadFloorLayer(e.target.files[0],'dirt');$('#decalUpload').onchange=e=>e.target.files[0]&&uploadDecal(e.target.files[0]);$('#referenceUpload').onchange=e=>e.target.files[0]&&uploadReference(e.target.files[0]);
   [['baseRX','base','repeatX'],['baseRY','base','repeatY'],['dirtRX','dirt','repeatX'],['dirtRY','dirt','repeatY']].forEach(([id,l,k])=>$('#'+id).onchange=e=>{data.floor[l][k]=Math.max(1,+e.target.value||1);rebuildFloorLayers();saveSoon()});
   $('#baseRot').onchange=e=>{data.floor.base.rotate90=e.target.checked;rebuildFloorLayers();saveSoon()};$('#dirtRot').onchange=e=>{data.floor.dirt.rotate90=e.target.checked;rebuildFloorLayers();saveSoon()};
   $('#referenceVisible').onchange=e=>{data.reference.visible=e.target.checked;rebuildReference();saveSoon()};
   $('#referenceOpacity').oninput=e=>{data.reference.opacity=+e.target.value;$('#referenceOpacityValue').textContent=Math.round(data.reference.opacity*100)+'%';rebuildReference();saveSoon()};
+  $('#referenceEditBtn').onclick=()=>{referenceEdit=!referenceEdit;referenceDrag=null;orbit.enabled=true;rebuildReference();renderFloorControls()};
+  $('#referenceRotL').onclick=()=>rotateReference(-90);$('#referenceRotR').onclick=()=>rotateReference(90);
+  $('#referenceKeepAspect').onchange=e=>{data.reference.keepAspect=e.target.checked;saveSoon()};
   [['referenceX','x'],['referenceZ','z'],['referenceW','width'],['referenceH','height']].forEach(([id,k])=>$('#'+id).onchange=e=>{data.reference[k]=+e.target.value;rebuildReference();saveSoon()});
   document.querySelectorAll('[data-decal-asset]').forEach(x=>{x.onclick=()=>{window.__selectedDecalAsset=x.dataset.decalAsset;renderFloorControls()};x.ondragstart=e=>{e.dataTransfer.setData('text/castorium-decal',x.dataset.decalAsset);window.__selectedDecalAsset=x.dataset.decalAsset}});
   if(d){$('#decalLock').onchange=e=>{d.locked=e.target.checked;saveSoon()};$('#decalSX').onchange=e=>{d.scaleX=Math.max(.05,+e.target.value||1);decalRuntime.get(d.id)?.scale.set(d.scaleX,d.scaleY,1);saveSoon()};$('#decalSY').onchange=e=>{d.scaleY=Math.max(.05,+e.target.value||1);decalRuntime.get(d.id)?.scale.set(d.scaleX,d.scaleY,1);saveSoon()};$('#deleteDecal').onclick=()=>{decalGroup.remove(decalRuntime.get(d.id));decalRuntime.delete(d.id);data.decals=data.decals.filter(x=>x.id!==d.id);selectedDecalId=null;saveSoon();renderFloorControls()}}
 }
 function floorPointFromEvent(e){const ray=rayFromEvent(e),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),p=new THREE.Vector3();return ray.ray.intersectPlane(plane,p)?p:null}
 function copyFloorConfig(){
-  const out={version:'2.4',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
+  const out={version:'2.5',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
   navigator.clipboard.writeText(JSON.stringify(out,null,2)).then(()=>alert('Configuración del piso copiada. Pegámela en el chat cuando quieras hardcodearla.'));
 }
 async function uploadTile(file){const id=uid('tile');await dbPut('tile:'+id,file);data.tiles.push({id,name:file.name});currentTileId=id;saveSoon();renderTiles()}
@@ -221,12 +243,40 @@ function renderTiles(){$('#tilePalette').innerHTML=data.tiles.map(t=>`<div class
 function rayFromEvent(e){const r=renderer.domElement.getBoundingClientRect(),m=new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1),ray=new THREE.Raycaster();ray.setFromCamera(m,camera);return ray}
 function recordIdFromHit(obj){let o=obj;while(o&&o!==objectGroup){if(o.userData?.recordId)return o.userData.recordId;o=o.parent}return null}
 renderer.domElement.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button!==2)return;const ray=rayFromEvent(e);
+  if(referenceEdit&&e.button===0){
+    const hits=ray.intersectObjects(referenceGroup.children,true);
+    const handleHit=hits.find(h=>h.object.userData.referenceHandle);
+    const bodyHit=hits.find(h=>h.object.userData.referenceBody);
+    const p=floorPointFromEvent(e);
+    if(handleHit&&p){
+      const {sx,sy}=handleHit.object.userData.referenceHandle,{u,v}=referenceBasis(),c=new THREE.Vector3(data.reference.x,0,data.reference.z);
+      const opposite=c.clone().addScaledVector(u,-sx*data.reference.width/2).addScaledVector(v,-sy*data.reference.height/2);
+      referenceDrag={mode:'resize',sx,sy,opposite,aspect:Math.max(.0001,data.reference.width/Math.max(.0001,data.reference.height))};orbit.enabled=false;return;
+    }
+    if(bodyHit&&p){
+      referenceDrag={mode:'move',offsetX:data.reference.x-p.x,offsetZ:data.reference.z-p.z};orbit.enabled=false;return;
+    }
+  }
   const decalHit=ray.intersectObjects(decalGroup.children,true)[0];
   if(decalHit){const id=decalHit.object.userData.decalId||decalHit.object.parent?.userData?.decalId;if(id){if(e.button===2){e.preventDefault();rotateDecal(id,45);setDecalSelected(id);return}setDecalSelected(id);const d=data.decals.find(x=>x.id===id);if(d&&!d.locked){draggingDecal=true;orbit.enabled=false}return}}
   if(e.ctrlKey&&e.button===0&&window.__selectedDecalAsset){const p=floorPointFromEvent(e);if(p){placeDecalAt(window.__selectedDecalAsset,p);return}}
 if(floorPaint){const h=ray.intersectObjects(floorGroup.children,false).find(x=>x.object.userData.floorCell);if(!h)return;const k=h.object.userData.floorCell.key;if(e.button===2){e.preventDefault();const old=data.floor.cells[k];if(old){const cell=typeof old==='string'?{tileId:old,rotation:0}:old;cell.rotation=((cell.rotation||0)+90)%360;data.floor.cells[k]=cell}else if(currentTileId&&!eraseFloorMode)data.floor.cells[k]={tileId:currentTileId,rotation:90}}else{if(eraseFloorMode||!currentTileId)delete data.floor.cells[k];else data.floor.cells[k]={tileId:currentTileId,rotation:0}}rebuildFloor();saveSoon();return}if(e.button!==0)return;const hits=ray.intersectObjects(objectGroup.children,true).filter(h=>!h.object.userData?.editorLabel);for(const h of hits){const id=recordIdFromHit(h.object);if(id){select(id);return}}});
-renderer.domElement.addEventListener('pointermove',e=>{if(!draggingDecal||!selectedDecalId)return;const d=selectedDecal();if(!d||d.locked)return;const p=floorPointFromEvent(e);if(!p)return;d.x=+p.x.toFixed(4);d.z=+p.z.toFixed(4);const m=decalRuntime.get(d.id);if(m)m.position.set(d.x,.008,d.z);saveSoon()});
-window.addEventListener('pointerup',()=>{if(draggingDecal){draggingDecal=false;orbit.enabled=true}});
+renderer.domElement.addEventListener('pointermove',e=>{
+  if(referenceDrag){
+    const p=floorPointFromEvent(e);if(!p)return;
+    if(referenceDrag.mode==='move'){data.reference.x=+(p.x+referenceDrag.offsetX).toFixed(4);data.reference.z=+(p.z+referenceDrag.offsetZ).toFixed(4)}
+    else if(referenceDrag.mode==='resize'){
+      const {u,v}=referenceBasis(),delta=p.clone().sub(referenceDrag.opposite);let w=Math.max(.1,Math.abs(delta.dot(u))),h=Math.max(.1,Math.abs(delta.dot(v)));
+      if(data.reference.keepAspect!==false){const a=referenceDrag.aspect;if(w/h>a)h=w/a;else w=h*a}
+      data.reference.width=+w.toFixed(4);data.reference.height=+h.toFixed(4);
+      const center=referenceDrag.opposite.clone().addScaledVector(u,referenceDrag.sx*w/2).addScaledVector(v,referenceDrag.sy*h/2);
+      data.reference.x=+center.x.toFixed(4);data.reference.z=+center.z.toFixed(4);
+    }
+    rebuildReference();saveSoon();return;
+  }
+  if(!draggingDecal||!selectedDecalId)return;const d=selectedDecal();if(!d||d.locked)return;const p=floorPointFromEvent(e);if(!p)return;d.x=+p.x.toFixed(4);d.z=+p.z.toFixed(4);const m=decalRuntime.get(d.id);if(m)m.position.set(d.x,.008,d.z);saveSoon()
+});
+window.addEventListener('pointerup',()=>{if(referenceDrag){referenceDrag=null;orbit.enabled=true;renderFloorControls()}if(draggingDecal){draggingDecal=false;orbit.enabled=true}});
 renderer.domElement.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('text/castorium-decal'))e.preventDefault()});
 renderer.domElement.addEventListener('drop',e=>{const id=e.dataTransfer.getData('text/castorium-decal');if(!id)return;e.preventDefault();const p=floorPointFromEvent(e);if(p)placeDecalAt(id,p)});
 renderer.domElement.addEventListener('contextmenu',e=>{if(floorPaint||rayFromEvent(e).intersectObjects(decalGroup.children,true).length)e.preventDefault()});
