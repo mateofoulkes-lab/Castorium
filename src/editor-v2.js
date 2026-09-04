@@ -32,7 +32,7 @@ const CATALOG={
 const DYNAMIC_REFS=[['custom','Posición custom'],['cut1.outputFree','Corte 1 · salida libre'],['cut2.outputFree','Corte 2 · salida libre'],['cut3.outputFree','Corte 3 · salida libre'],['cutBuffer.free','Depósito corte · slot libre'],['artisanBuffer.free','Depósito artesanal · slot libre'],['finishedBuffer.free','Producto terminado · slot libre'],['pack1.inputFree','Embalaje 1 · entrada libre'],['pack2.inputFree','Embalaje 2 · entrada libre'],['pack1.outputFree','Embalaje 1 · salida libre'],['pack2.outputFree','Embalaje 2 · salida libre'],['dispatch.free','Camión despacho · slot libre']];
 
 const viewport=$('#viewport');
-const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.outputColorSpace=THREE.SRGBColorSpace;viewport.appendChild(renderer.domElement);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.domElement.tabIndex=0;renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.outputColorSpace=THREE.SRGBColorSpace;viewport.appendChild(renderer.domElement);
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x252b31);
 const camera=new THREE.PerspectiveCamera(45,1,.05,1000);camera.position.set(18,20,22);
 const orbit=new OrbitControls(camera,renderer.domElement);orbit.target.set(0,0,0);orbit.enableDamping=true;
@@ -47,7 +47,7 @@ let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,rou
 const runtime=new Map(),assetRuntime=new Map(),animationRuntime=new Map(),repoAnimationRuntime=new Map(),decalRuntime=new Map(),mixers=new Map();
 let selectionBox=null,decalSelectionBox=null,activeAxis=null;
 let undoStack=[],lastCommittedState=null,isRestoringHistory=false;
-function defaultData(){return {version:2.10,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
+function defaultData(){return {version:2.11,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
 function isCharacterKind(kind){return info(kind).group==='Personajes'}
 function uid(p='id'){return p+'-'+Math.random().toString(36).slice(2,9)}
 function t0(){return {position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1}}}
@@ -266,14 +266,14 @@ async function instantiateDecal(rec){
 }
 async function rebuildDecals(){decalGroup.clear();decalRuntime.clear();for(const d of data.decals){const a=await ensureDecalAssetMetadata(d.assetId);if(a?.aspect&&(!d.aspect||d.aspect===1&&a.aspect!==1)){d.aspect=a.aspect;if(d.keepAspect!==false){const area=Math.max(.01,(d.scaleX||1)*(d.scaleY||1));d.scaleX=Math.sqrt(area*a.aspect);d.scaleY=d.scaleX/a.aspect}}await instantiateDecal(d)}refreshDecalSelection()}
 function selectedDecal(){return data.decals.find(d=>d.id===selectedDecalId)||null}
-function clearDecalSelection(){selectedDecalId=null;refreshDecalSelection()}
+function clearDecalSelection(){selectedDecalId=null;decalRepeatMode=false;refreshDecalSelection();renderDecalRepeatOverlay()}
 function refreshDecalSelection(){
   if(decalSelectionBox){scene.remove(decalSelectionBox);decalSelectionBox.geometry?.dispose?.();decalSelectionBox.material?.dispose?.();decalSelectionBox=null}
   const m=selectedDecalId?decalRuntime.get(selectedDecalId):null;
   if(m){decalSelectionBox=new THREE.BoxHelper(m,0xffd54a);decalSelectionBox.material.depthTest=false;decalSelectionBox.material.transparent=true;decalSelectionBox.material.opacity=.95;decalSelectionBox.renderOrder=1000;scene.add(decalSelectionBox)}
   renderFloorControls();
 }
-function setDecalSelected(id){selectedDecalId=id;selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();renderTree();renderInspector();refreshDecalSelection();$('#modeBadge').textContent=decalEdit?'DECALS':'OBJETO'}
+function setDecalSelected(id){selectedDecalId=id;selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();renderTree();renderInspector();refreshDecalSelection();renderDecalRepeatOverlay();if(!decalRepeatMode)$('#modeBadge').textContent=decalEdit?'DECALS':'OBJETO'}
 async function placeDecalAt(assetId,p){
   if(!assetId)return;
   const a=await ensureDecalAssetMetadata(assetId),aspect=Math.max(.0001,a?.aspect||1);
@@ -342,8 +342,16 @@ function updateDecalTransform(p,event=null){
   decalSelectionBox?.update();renderFloorControls();
 }
 function rotateDecal(id,deg=45){const d=data.decals.find(x=>x.id===id);if(!d||d.locked)return;d.rotation=((d.rotation||0)+deg)%360;const m=decalRuntime.get(id);if(m)m.rotation.set(-Math.PI/2,0,THREE.MathUtils.degToRad(d.rotation));saveSoon();renderFloorControls()}
+function renderDecalRepeatOverlay(){
+  const el=$('#decalRepeatOverlay');if(!el)return;
+  const d=selectedDecal();
+  el.hidden=!(decalEdit&&decalRepeatMode&&d);
+  if(el.hidden)return;
+  el.querySelectorAll('[data-repeat-overlay]').forEach(b=>b.onclick=()=>repeatDecal(b.dataset.repeatOverlay));
+  $('#modeBadge').textContent='DECAL · REPETIR';
+}
 function renderFloorControls(){
-  const el=$('#floorV23');if(!el)return;
+  const el=$('#floorV23');if(!el)return;renderDecalRepeatOverlay();
   const lib=data.decalLibrary.map(a=>{const meta=(a.width&&a.height)?`${a.width}×${a.height} · ${(a.aspect||1).toFixed(2)}:1`:'metadata pendiente';return `<div class="asset-row decal-library-item ${a.id===window.__selectedDecalAsset?'selected':''}" draggable="true" data-decal-asset="${a.id}"><span class="asset-name">${esc(a.name)}<small>${meta}</small></span><button class="decal-lib-delete" data-del-decal-asset="${a.id}" title="Borrar de biblioteca">×</button></div>`}).join('')||'<div class="muted">Cargá JPG/PNG para la biblioteca.</div>';
   const d=selectedDecal();
   el.innerHTML=`
@@ -368,7 +376,7 @@ function renderFloorControls(){
     $('#decalKeepAspect').onchange=e=>{d.keepAspect=e.target.checked;saveSoon()};
     $('#decalSX').onchange=e=>{d.scaleX=Math.max(.05,+e.target.value||1);if(d.keepAspect!==false)d.scaleY=d.scaleX/Math.max(.0001,d.aspect||1);decalRuntime.get(d.id)?.scale.set(d.scaleX,d.scaleY,1);refreshDecalSelection();saveSoon();renderFloorControls()};
     $('#decalSY').onchange=e=>{d.scaleY=Math.max(.05,+e.target.value||1);if(d.keepAspect!==false)d.scaleX=d.scaleY*Math.max(.0001,d.aspect||1);decalRuntime.get(d.id)?.scale.set(d.scaleX,d.scaleY,1);refreshDecalSelection();saveSoon();renderFloorControls()};
-    $('#decalRepeatBtn').onclick=()=>{decalRepeatMode=!decalRepeatMode;renderFloorControls()};
+    $('#decalRepeatBtn').onclick=()=>{decalRepeatMode=!decalRepeatMode;renderFloorControls();renderDecalRepeatOverlay()};
     document.querySelectorAll('[data-repeat-dir]').forEach(b=>b.onclick=()=>repeatDecal(b.dataset.repeatDir));
     $('#duplicateDecal').onclick=duplicateDecal;
     $('#deleteDecal').onclick=()=>{decalGroup.remove(decalRuntime.get(d.id));decalRuntime.delete(d.id);data.decals=data.decals.filter(x=>x.id!==d.id);selectedDecalId=null;saveSoon();refreshDecalSelection();renderFloorControls()}
@@ -376,7 +384,7 @@ function renderFloorControls(){
 }
 function floorPointFromEvent(e){const ray=rayFromEvent(e),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),p=new THREE.Vector3();return ray.ray.intersectPlane(plane,p)?p:null}
 function copyFloorConfig(){
-  const out={version:'2.10',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
+  const out={version:'2.11',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
   navigator.clipboard.writeText(JSON.stringify(out,null,2)).then(()=>alert('Configuración del piso copiada. Pegámela en el chat cuando quieras hardcodearla.'));
 }
 async function uploadTile(file){const id=uid('tile');await dbPut('tile:'+id,file);data.tiles.push({id,name:file.name});currentTileId=id;saveSoon();renderTiles()}
@@ -385,7 +393,7 @@ function rebuildFloor(){floorGroup.clear();const w=data.floor.width,d=data.floor
 function renderTiles(){$('#tilePalette').innerHTML=data.tiles.map(t=>`<div class="tile-row"><div class="tile-thumb ${t.id===currentTileId?'active':''}" data-tile="${t.id}"></div><span>${esc(t.name)}</span></div>`).join('')||'<div class="muted">Cargá una textura para pintar.</div>';data.tiles.forEach(async t=>{const b=await dbGet('tile:'+t.id),e=document.querySelector(`[data-tile="${t.id}"]`);if(b&&e){const u=URL.createObjectURL(b);e.style.backgroundImage=`url(${u})`;e.onclick=()=>{currentTileId=t.id;eraseFloorMode=false;renderTiles()}}})}
 function rayFromEvent(e){const r=renderer.domElement.getBoundingClientRect(),m=new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1),ray=new THREE.Raycaster();ray.setFromCamera(m,camera);return ray}
 function recordIdFromHit(obj){let o=obj;while(o&&o!==objectGroup){if(o.userData?.recordId)return o.userData.recordId;o=o.parent}return null}
-renderer.domElement.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button!==2)return;const ray=rayFromEvent(e);
+renderer.domElement.addEventListener('pointerdown',e=>{renderer.domElement.focus({preventScroll:true});if(e.button!==0&&e.button!==2)return;const ray=rayFromEvent(e);
   if(referenceEdit&&e.button===0){
     const hits=ray.intersectObjects(referenceGroup.children,true);
     const handleHit=hits.find(h=>h.object.userData.referenceHandle);
@@ -469,12 +477,12 @@ async function importJson(file){data=Object.assign(defaultData(),JSON.parse(awai
 window.addEventListener('keydown',e=>{
   const inField=['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName),k=e.key.toLowerCase();
   if((e.ctrlKey||e.metaKey)&&k==='z'){e.preventDefault();undo();return}
+  if(decalEdit&&k==='p'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();decalRepeatMode=!decalRepeatMode;renderFloorControls();renderDecalRepeatOverlay();return}
   if(inField)return;
   if(decalEdit&&(e.ctrlKey||e.metaKey)&&k==='d'){e.preventDefault();duplicateDecal();return}
   if(decalEdit&&k==='g'){beginDecalTransform('move');return}
   if(decalEdit&&k==='r'){beginDecalTransform('rotate');return}
   if(decalEdit&&k==='s'){beginDecalTransform('scale');return}
-  if(decalEdit&&k==='p'){decalRepeatMode=!decalRepeatMode;renderFloorControls();$('#modeBadge').textContent=decalRepeatMode?'DECAL · REPETIR':'DECALS';return}
   if(decalEdit&&(k==='x'||k==='y')){toggleAxis(k);return}
   if(decalEdit&&e.key==='Delete'){const d=selectedDecal();if(d){decalGroup.remove(decalRuntime.get(d.id));decalRuntime.delete(d.id);data.decals=data.decals.filter(x=>x.id!==d.id);selectedDecalId=null;refreshDecalSelection();saveSoon()}return}
   if(decalEdit&&k==='escape'){if(decalTransform)cancelDecalTransform();else{showAllAxes();clearDecalSelection();$('#modeBadge').textContent='DECALS'}return}
