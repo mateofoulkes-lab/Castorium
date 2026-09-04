@@ -17,6 +17,12 @@ const DEFAULT_TRANSFORM = {
   scale: [1, 1, 1]
 };
 
+const DEFAULT_LOAD_TRANSFORM = {
+  position: [0, 0.65, 1.86],
+  rotationDegrees: [0, 0, 0],
+  scale: [1, 1, 1]
+};
+
 const viewport = document.querySelector('#viewport');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0d1412);
@@ -71,10 +77,30 @@ scene.add(ground);
 
 const yalePivot = new THREE.Group();
 const castorPivot = new THREE.Group();
+const loadPivot = new THREE.Group();
 yalePivot.name = 'YalePivot';
 castorPivot.name = 'CastorDriverPivot';
-scene.add(yalePivot, castorPivot);
+loadPivot.name = 'ForkLoadPivot';
+scene.add(yalePivot, castorPivot, loadPivot);
+let activeTarget = 'castor';
 transform.attach(castorPivot);
+
+const previewLogGeometry = new THREE.CylinderGeometry(.26, .29, 1.25, 8, 1, false);
+previewLogGeometry.rotateZ(Math.PI / 2);
+const previewLogMaterial = new THREE.MeshStandardMaterial({ color: 0xa85d31, roughness: .88 });
+[
+  [-.24, 0, 0],
+  [.24, 0, 0],
+  [0, .34, 0]
+].forEach(([x,y,z], index) => {
+  const log = new THREE.Mesh(previewLogGeometry, previewLogMaterial.clone());
+  log.position.set(x, y, z);
+  log.rotation.y = index === 2 ? .08 : 0;
+  log.castShadow = true;
+  log.receiveShadow = true;
+  loadPivot.add(log);
+});
+loadPivot.position.fromArray(DEFAULT_LOAD_TRANSFORM.position);
 
 let castorModel = null;
 let mixer = null;
@@ -200,6 +226,7 @@ function frameScene() {
   const box = new THREE.Box3();
   if (yalePivot.children.length) box.expandByObject(yalePivot);
   if (castorPivot.children.length) box.expandByObject(castorPivot);
+  if (loadPivot.children.length) box.expandByObject(loadPivot);
   if (box.isEmpty()) return;
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
@@ -232,16 +259,28 @@ function round(value, digits = 4) {
   return Number(value.toFixed(digits));
 }
 
+function transformConfig(pivot) {
+  return {
+    position: pivot.position.toArray().map(value => round(value)),
+    rotationDegrees: [pivot.rotation.x, pivot.rotation.y, pivot.rotation.z].map(value => round(THREE.MathUtils.radToDeg(value), 3)),
+    scale: pivot.scale.toArray().map(value => round(value))
+  };
+}
+
 function currentConfig() {
   return {
-    format: 'CASTORIUM_CASTOR_DRIVER_FIT_V1',
+    format: 'CASTORIUM_VEHICLE_FIT_V2',
     vehicleModel: 'models/yale.glb',
     driverModel: 'models/castorv2.glb',
     animation: 'anim/Driving.fbx',
     pivotNormalization: 'feet-center',
-    position: castorPivot.position.toArray().map(value => round(value)),
-    rotationDegrees: [castorPivot.rotation.x, castorPivot.rotation.y, castorPivot.rotation.z].map(value => round(THREE.MathUtils.radToDeg(value), 3)),
-    scale: castorPivot.scale.toArray().map(value => round(value)),
+    driver: transformConfig(castorPivot),
+    loadPoint: transformConfig(loadPivot),
+    loadPreview: {
+      geometry: 'cargoLogGeometry',
+      count: 3,
+      note: 'loadPoint es local al vehicle de la Yale y debe aplicarse al cargoGroup'
+    },
     animationSpeed: round(Number(document.querySelector('#animationSpeed').value) || 1, 3),
     loop: true
   };
@@ -252,15 +291,26 @@ function updateOutput() {
   document.querySelector('#outputText').value = `${config.format}\n${JSON.stringify(config, null, 2)}`;
 }
 
+function activePivot() { return activeTarget === 'load' ? loadPivot : castorPivot; }
+
+function setActiveTarget(target) {
+  activeTarget = target;
+  transform.attach(activePivot());
+  document.querySelectorAll('[data-target]').forEach(button => button.classList.toggle('active', button.dataset.target === target));
+  document.querySelector('#targetLabel').textContent = target === 'load' ? 'Punto de carga / troncos' : 'Castor conductor';
+  syncInputs();
+}
+
 function syncInputs() {
+  const pivot = activePivot();
   const vectors = {
-    position: castorPivot.position,
+    position: pivot.position,
     rotation: {
-      x: THREE.MathUtils.radToDeg(castorPivot.rotation.x),
-      y: THREE.MathUtils.radToDeg(castorPivot.rotation.y),
-      z: THREE.MathUtils.radToDeg(castorPivot.rotation.z)
+      x: THREE.MathUtils.radToDeg(pivot.rotation.x),
+      y: THREE.MathUtils.radToDeg(pivot.rotation.y),
+      z: THREE.MathUtils.radToDeg(pivot.rotation.z)
     },
-    scale: castorPivot.scale
+    scale: pivot.scale
   };
   document.querySelectorAll('[data-vector]').forEach(group => {
     const vector = vectors[group.dataset.vector];
@@ -271,14 +321,15 @@ function syncInputs() {
 
 function applyInput(group, axis, value) {
   if (!Number.isFinite(value)) return;
-  if (group === 'position') castorPivot.position[axis] = value;
-  if (group === 'rotation') castorPivot.rotation[axis] = THREE.MathUtils.degToRad(value);
+  const pivot = activePivot();
+  if (group === 'position') pivot.position[axis] = value;
+  if (group === 'rotation') pivot.rotation[axis] = THREE.MathUtils.degToRad(value);
   if (group === 'scale') {
     const safeValue = Math.max(0.001, value);
-    if (document.querySelector('#lockScale').checked) castorPivot.scale.setScalar(safeValue);
-    else castorPivot.scale[axis] = safeValue;
+    if (document.querySelector('#lockScale').checked) pivot.scale.setScalar(safeValue);
+    else pivot.scale[axis] = safeValue;
   }
-  castorPivot.updateMatrixWorld(true);
+  pivot.updateMatrixWorld(true);
   syncInputs();
   persist();
 }
@@ -292,9 +343,14 @@ function restore() {
   try {
     const saved = JSON.parse(localStorage.getItem('castorium-driver-fit-v1'));
     if (!saved) return false;
-    castorPivot.position.fromArray(saved.position || DEFAULT_TRANSFORM.position);
-    castorPivot.rotation.set(...(saved.rotationDegrees || DEFAULT_TRANSFORM.rotationDegrees).map(THREE.MathUtils.degToRad));
-    castorPivot.scale.fromArray(saved.scale || DEFAULT_TRANSFORM.scale);
+    const driver = saved.driver || saved;
+    const load = saved.loadPoint || DEFAULT_LOAD_TRANSFORM;
+    castorPivot.position.fromArray(driver.position || DEFAULT_TRANSFORM.position);
+    castorPivot.rotation.set(...(driver.rotationDegrees || DEFAULT_TRANSFORM.rotationDegrees).map(THREE.MathUtils.degToRad));
+    castorPivot.scale.fromArray(driver.scale || DEFAULT_TRANSFORM.scale);
+    loadPivot.position.fromArray(load.position || DEFAULT_LOAD_TRANSFORM.position);
+    loadPivot.rotation.set(...(load.rotationDegrees || DEFAULT_LOAD_TRANSFORM.rotationDegrees).map(THREE.MathUtils.degToRad));
+    loadPivot.scale.fromArray(load.scale || DEFAULT_LOAD_TRANSFORM.scale);
     if (saved.animationSpeed) document.querySelector('#animationSpeed').value = saved.animationSpeed;
     return true;
   } catch (error) {
@@ -304,9 +360,11 @@ function restore() {
 }
 
 function resetTransform() {
-  castorPivot.position.fromArray(DEFAULT_TRANSFORM.position);
-  castorPivot.rotation.set(0, 0, 0);
-  castorPivot.scale.fromArray(DEFAULT_TRANSFORM.scale);
+  const pivot = activePivot();
+  const defaults = activeTarget === 'load' ? DEFAULT_LOAD_TRANSFORM : DEFAULT_TRANSFORM;
+  pivot.position.fromArray(defaults.position);
+  pivot.rotation.set(...defaults.rotationDegrees.map(THREE.MathUtils.degToRad));
+  pivot.scale.fromArray(defaults.scale);
   syncInputs();
   persist();
   frameScene();
@@ -320,6 +378,8 @@ document.querySelectorAll('[data-mode]').forEach(button => button.addEventListen
   transform.setMode(button.dataset.mode);
   document.querySelectorAll('[data-mode]').forEach(item => item.classList.toggle('active', item === button));
 }));
+
+document.querySelectorAll('[data-target]').forEach(button => button.addEventListener('click', () => setActiveTarget(button.dataset.target)));
 
 document.querySelectorAll('[data-vector]').forEach(group => {
   group.querySelectorAll('[data-axis]').forEach(input => input.addEventListener('change', () => applyInput(group.dataset.vector, input.dataset.axis, Number(input.value))));
@@ -419,7 +479,7 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-syncInputs();
+setActiveTarget('castor');
 resize();
 loadScene();
 animate();
