@@ -45,8 +45,9 @@ const loader=new GLTFLoader();const fbxLoader=new FBXLoader();const textureLoade
 
 let data=defaultData(), selectedId=null, selectedThree=null, routeGhost=null,routeGhostInfo=null,currentTileId=null,floorPaint=false,eraseFloorMode=false,selectedDecalId=null,draggingDecal=false,referenceEdit=false,referenceDrag=null;
 const runtime=new Map(),assetRuntime=new Map(),animationRuntime=new Map(),repoAnimationRuntime=new Map(),decalRuntime=new Map(),mixers=new Map();
-let selectionBox=null,decalSelectionBox=null;
-function defaultData(){return {version:2.6,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
+let selectionBox=null,decalSelectionBox=null,activeAxis=null;
+let undoStack=[],lastCommittedState=null,isRestoringHistory=false;
+function defaultData(){return {version:2.7,gridSize:1,floor:{width:30,depth:20,cells:{},base:{name:null,repeatX:6,repeatY:4,rotate90:false},dirt:{name:null,repeatX:6,repeatY:4,rotate90:false}},reference:{name:null,visible:true,opacity:.45,x:0,z:0,width:30,height:20,rotation:0,keepAspect:true},decals:[],decalLibrary:[],objects:[],assets:[],animations:[],tiles:[],routes:[],layers:Object.fromEntries(LAYERS.map(x=>[x,true])),camera:{position:[18,20,22],target:[0,0,0]}};}
 function isCharacterKind(kind){return info(kind).group==='Personajes'}
 function uid(p='id'){return p+'-'+Math.random().toString(36).slice(2,9)}
 function t0(){return {position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1}}}
@@ -89,6 +90,11 @@ transform.addEventListener('objectChange',syncTransform);
 function deleteSelected(){const r=selected();if(!r)return;objectGroup.remove(runtime.get(r.id));runtime.delete(r.id);data.objects=data.objects.filter(x=>x.id!==r.id);selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();saveSoon();renderTree();renderInspector()}
 function duplicate(){const r=selected();if(!r)return;const c=structuredClone(r);c.id=uid(r.kind);c.name+=' copia';c.transform.position.x+=data.gridSize;data.objects.push(c);instantiate(c).then(()=>select(c.id));saveSoon()}
 function focus(){const o=transform.object||selectedThree;if(!o)return;const b=new THREE.Box3().setFromObject(o),c=b.getCenter(new THREE.Vector3()),s=Math.max(1,b.getSize(new THREE.Vector3()).length());orbit.target.copy(c);camera.position.copy(c.clone().add(new THREE.Vector3(s,s*.8,s)));orbit.update()}
+function showAllAxes(){activeAxis=null;transform.showX=transform.showY=transform.showZ=true}
+function toggleAxis(axis){
+  if(activeAxis===axis){showAllAxes();return}
+  activeAxis=axis;transform.showX=axis==='x';transform.showY=axis==='y';transform.showZ=axis==='z'
+}
 
 function renderTree(){const q=($('#treeFilter').value||'').toLowerCase();$('#sceneTree').innerHTML=data.objects.filter(o=>o.name.toLowerCase().includes(q)||o.kind.includes(q)).map(o=>`<div class="tree-item ${o.id===selectedId?'selected':''}" data-id="${o.id}"><button class="vis">${o.visible===false?'○':'●'}</button><span class="name">${esc(o.name)}</span><small>${info(o.kind).label}</small></div>`).join('')||'<div class="muted">Escena vacía</div>';document.querySelectorAll('.tree-item').forEach(el=>{el.onclick=e=>{if(e.target.classList.contains('vis'))return;select(el.dataset.id)};el.querySelector('.vis').onclick=e=>{e.stopPropagation();const r=data.objects.find(x=>x.id===el.dataset.id);r.visible=r.visible===false;const o=runtime.get(r.id);if(o)o.visible=r.visible&&data.layers[r.layer]!==false;saveSoon();renderTree()}})}
 function renderLayers(){$('#layerList').innerHTML=LAYERS.map(l=>`<div class="layer-row"><input type="checkbox" data-layer="${l}" ${data.layers[l]!==false?'checked':''}><span>${l}</span></div>`).join('');document.querySelectorAll('[data-layer]').forEach(e=>e.onchange=()=>{data.layers[e.dataset.layer]=e.checked;data.objects.filter(o=>o.layer===e.dataset.layer).forEach(o=>{const x=runtime.get(o.id);if(x)x.visible=e.checked&&o.visible!==false});saveSoon()})}
@@ -260,7 +266,7 @@ function renderFloorControls(){
 }
 function floorPointFromEvent(e){const ray=rayFromEvent(e),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),p=new THREE.Vector3();return ray.ray.intersectPlane(plane,p)?p:null}
 function copyFloorConfig(){
-  const out={version:'2.6',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
+  const out={version:'2.7',size:{width:data.floor.width,depth:data.floor.depth,gridSize:data.gridSize},base:data.floor.base,dirt:data.floor.dirt,decalLibrary:data.decalLibrary,decals:data.decals};
   navigator.clipboard.writeText(JSON.stringify(out,null,2)).then(()=>alert('Configuración del piso copiada. Pegámela en el chat cuando quieras hardcodearla.'));
 }
 async function uploadTile(file){const id=uid('tile');await dbPut('tile:'+id,file);data.tiles.push({id,name:file.name});currentTileId=id;saveSoon();renderTiles()}
@@ -316,14 +322,52 @@ async function selectKf(rid,kid){const r=data.routes.find(x=>x.id===rid),k=r?.ke
 function dyn(ref){const r=data.objects.find(o=>o.meta?.refKey===ref||o.name===ref);return r?runtime.get(r.id)?.getWorldPosition(new THREE.Vector3()):null}
 function redrawRoutes(keepGhost=true){[...routeGroup.children].forEach(c=>{if(keepGhost&&c===routeGhost)return;routeGroup.remove(c)});data.routes.forEach(r=>{const p=r.keyframes.map(k=>k.ref==='custom'?new THREE.Vector3(k.transform.position.x,k.transform.position.y+.08,k.transform.position.z):dyn(k.ref)).filter(Boolean);if(p.length>1){routeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p),new THREE.LineBasicMaterial({color:0x69c9ff})));p.forEach(v=>{const s=new THREE.Mesh(new THREE.SphereGeometry(.12,8,6),new THREE.MeshBasicMaterial({color:0x69c9ff}));s.position.copy(v);routeGroup.add(s)})}})}
 
-let saveTimer;function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(saveLocal,200)}function saveLocal(){data.gridSize=+$('#gridSize').value||1;data.camera={position:camera.position.toArray(),target:orbit.target.toArray()};localStorage.setItem(STORAGE_KEY,JSON.stringify(data))}
-async function loadLocal(){const raw=localStorage.getItem(STORAGE_KEY);if(raw)try{data=Object.assign(defaultData(),JSON.parse(raw));data.animations=Array.isArray(data.animations)?data.animations:[]}catch{}ensureFloorV23();await ensurePreset();$('#gridSize').value=data.gridSize||1;$('#floorWidth').value=data.floor.width;$('#floorDepth').value=data.floor.depth;camera.position.fromArray(data.camera?.position||[18,20,22]);orbit.target.fromArray(data.camera?.target||[0,0,0]);updateGrid();await rebuildFloorLayers();await rebuildReference();await rebuildDecals();for(const o of data.objects)await instantiate(o);renderAll();saveLocal()}
+let saveTimer;
+function snapshotState(){data.gridSize=+$('#gridSize').value||1;data.camera={position:camera.position.toArray(),target:orbit.target.toArray()};return JSON.stringify(data)}
+function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(saveLocal,200)}
+function saveLocal(){
+  const snap=snapshotState();
+  if(!isRestoringHistory&&lastCommittedState!==null&&snap!==lastCommittedState){undoStack.push(lastCommittedState);if(undoStack.length>80)undoStack.shift()}
+  lastCommittedState=snap;localStorage.setItem(STORAGE_KEY,snap)
+}
+async function restoreSnapshot(snap){
+  isRestoringHistory=true;clearTimeout(saveTimer);
+  data=Object.assign(defaultData(),JSON.parse(snap));data.animations=Array.isArray(data.animations)?data.animations:[];ensureFloorV23();
+  selectedId=null;selectedThree=null;selectedDecalId=null;routeGhostInfo=null;transform.detach();showAllAxes();clearSelectionBox();
+  if(decalSelectionBox){scene.remove(decalSelectionBox);decalSelectionBox=null}
+  objectGroup.clear();runtime.clear();referenceGroup.clear();decalGroup.clear();decalRuntime.clear();routeGroup.clear();
+  $('#gridSize').value=data.gridSize||1;$('#floorWidth').value=data.floor.width;$('#floorDepth').value=data.floor.depth;
+  camera.position.fromArray(data.camera?.position||[18,20,22]);orbit.target.fromArray(data.camera?.target||[0,0,0]);
+  updateGrid();await rebuildFloorLayers();await rebuildReference();await rebuildDecals();for(const o of data.objects)await instantiate(o);
+  renderAll();redrawRoutes();lastCommittedState=JSON.stringify(data);localStorage.setItem(STORAGE_KEY,lastCommittedState);isRestoringHistory=false
+}
+async function undo(){
+  clearTimeout(saveTimer);
+  const current=snapshotState();
+  if(lastCommittedState!==null&&current!==lastCommittedState){await restoreSnapshot(lastCommittedState);return}
+  const prev=undoStack.pop();if(prev)await restoreSnapshot(prev)
+}
+async function loadLocal(){const raw=localStorage.getItem(STORAGE_KEY);if(raw)try{data=Object.assign(defaultData(),JSON.parse(raw));data.animations=Array.isArray(data.animations)?data.animations:[]}catch{}ensureFloorV23();await ensurePreset();$('#gridSize').value=data.gridSize||1;$('#floorWidth').value=data.floor.width;$('#floorDepth').value=data.floor.depth;camera.position.fromArray(data.camera?.position||[18,20,22]);orbit.target.fromArray(data.camera?.target||[0,0,0]);updateGrid();await rebuildFloorLayers();await rebuildReference();await rebuildDecals();for(const o of data.objects)await instantiate(o);renderAll();saveLocal();undoStack=[];lastCommittedState=snapshotState()}
 function renderAll(){renderTree();renderLayers();renderInspector();renderAssetLibrary();renderTiles();renderCatalog();renderRoutes();renderFloorControls()}
 function updateGrid(){scene.remove(grid);const s=+$('#gridSize').value||1,size=Math.max(data.floor.width,data.floor.depth)*s*1.5;grid=new THREE.GridHelper(size,Math.round(size/s),0x87919c,0x4b555f);grid.visible=$('#toggleGrid').classList.contains('active');scene.add(grid);data.gridSize=s;rebuildFloorLayers();saveSoon()}
 function exportJson(){saveLocal();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='castorium-map.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 async function importJson(file){data=Object.assign(defaultData(),JSON.parse(await file.text()));data.animations=Array.isArray(data.animations)?data.animations:[];ensureFloorV23();await ensurePreset();selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();objectGroup.clear();runtime.clear();for(const o of data.objects)await instantiate(o);await rebuildFloorLayers();await rebuildReference();await rebuildDecals();renderAll();saveLocal()}
 
-window.addEventListener('keydown',e=>{if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName))return;const k=e.key.toLowerCase();if(e.shiftKey&&k==='d'){e.preventDefault();duplicate();return}if(k==='g'){transform.setMode('translate');$('#modeBadge').textContent='MOVER'}else if(k==='r'){transform.setMode('rotate');$('#modeBadge').textContent='ROTAR'}else if(k==='s'){transform.setMode('scale');$('#modeBadge').textContent='ESCALAR'}else if(k==='x'){transform.showX=true;transform.showY=false;transform.showZ=false}else if(k==='y'){transform.showX=false;transform.showY=true;transform.showZ=false}else if(k==='z'){transform.showX=false;transform.showY=false;transform.showZ=true}else if(k==='f')focus();else if(k==='h'&&selected()){const r=selected();r.visible=false;runtime.get(r.id).visible=false;renderTree();saveSoon()}else if(e.altKey&&k==='h'){data.objects.forEach(r=>{r.visible=true;const o=runtime.get(r.id);if(o)o.visible=data.layers[r.layer]!==false});renderTree();saveSoon()}else if(e.key==='Delete')deleteSelected();else if(k==='escape'){transform.showX=transform.showY=transform.showZ=true;$('#modeBadge').textContent='OBJETO'}});
+window.addEventListener('keydown',e=>{
+  const inField=['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName),k=e.key.toLowerCase();
+  if((e.ctrlKey||e.metaKey)&&k==='z'){e.preventDefault();undo();return}
+  if(inField)return;
+  if(e.shiftKey&&k==='d'){e.preventDefault();duplicate();return}
+  if(k==='g'){transform.setMode('translate');$('#modeBadge').textContent='MOVER'}
+  else if(k==='r'){transform.setMode('rotate');$('#modeBadge').textContent='ROTAR'}
+  else if(k==='s'){transform.setMode('scale');$('#modeBadge').textContent='ESCALAR'}
+  else if(k==='x'||k==='y'||k==='z')toggleAxis(k)
+  else if(k==='f')focus()
+  else if(k==='h'&&selected()){const r=selected();r.visible=false;runtime.get(r.id).visible=false;renderTree();saveSoon()}
+  else if(e.altKey&&k==='h'){data.objects.forEach(r=>{r.visible=true;const o=runtime.get(r.id);if(o)o.visible=data.layers[r.layer]!==false});renderTree();saveSoon()}
+  else if(e.key==='Delete')deleteSelected()
+  else if(k==='escape'){showAllAxes();$('#modeBadge').textContent='OBJETO'}
+});
 
 $('#addObject').onclick=()=>{$('#objectDialog').showModal();renderCatalog()};$('#objectSearch').oninput=e=>renderCatalog(e.target.value);$('#treeFilter').oninput=renderTree;$('#modelUpload').onchange=e=>e.target.files[0]&&uploadModel(e.target.files[0]);$('#tileUpload').onchange=e=>e.target.files[0]&&uploadTile(e.target.files[0]);$('#gridSize').onchange=updateGrid;$('#toggleGrid').onclick=e=>{e.currentTarget.classList.toggle('active');grid.visible=e.currentTarget.classList.contains('active')};$('#focusSelected').onclick=focus;$('#floorMode').onclick=e=>{floorPaint=!floorPaint;e.currentTarget.classList.toggle('active',floorPaint);orbit.enabled=!floorPaint;$('#modeBadge').textContent=floorPaint?'PINTAR PISO':'OBJETO'};$('#eraseFloor').onclick=()=>{eraseFloorMode=true;currentTileId=null;renderTiles()};$('#resizeFloor').onclick=()=>{data.floor.width=Math.max(1,+$('#floorWidth').value);data.floor.depth=Math.max(1,+$('#floorDepth').value);updateGrid();rebuildFloorLayers();saveSoon()};$('#newScene').onclick=()=>{if(!confirm('¿Vaciar la escena?'))return;const assets=data.assets,tiles=data.tiles,animations=data.animations,decalLibrary=data.decalLibrary;data=defaultData();data.assets=assets;data.tiles=tiles;data.animations=animations;data.decalLibrary=decalLibrary;objectGroup.clear();runtime.clear();selectedId=null;selectedThree=null;transform.detach();clearSelectionBox();referenceGroup.clear();decalGroup.clear();decalRuntime.clear();rebuildFloorLayers();rebuildReference();renderAll();saveLocal()};$('#saveScene').onclick=()=>{saveLocal();alert('Guardado en este navegador.')};$('#exportScene').onclick=exportJson;$('#importScene').onchange=e=>e.target.files[0]&&importJson(e.target.files[0]);$('#copyFloorConfig').onclick=copyFloorConfig;$('#addRoute').onclick=addRoute;$('#routeSelect').onchange=()=>{renderRouteEditor();redrawRoutes()};
 function resize(){const r=viewport.getBoundingClientRect();renderer.setSize(r.width,r.height,false);camera.aspect=r.width/r.height;camera.updateProjectionMatrix()}window.addEventListener('resize',resize);resize();
