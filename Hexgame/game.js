@@ -247,8 +247,7 @@ function makeTextSprite(text,color='#fff7d0',scale=1){
 
 function cloneProp(name,height,tint=null){
   const source=assetTemplates[name]; if(!source)return null;
-  const model=source.clone(true); normalizeFeet(model); normalizeHeight(model,height); shadows(model);
-  if(tint!==null) model.traverse(o=>{if(o.isMesh&&o.material){o.material=o.material.clone();o.material.color.lerp(new THREE.Color(tint),.34);}});
+  const model=source.clone(true); normalizeFeet(model); normalizeHeight(model,height); shadows(model);  if(tint!==null) model.traverse(o=>{if(o.isMesh&&o.material){o.material=o.material.clone();o.material.color.lerp(new THREE.Color(tint),.34);}});
   return model;
 }
 
@@ -473,7 +472,7 @@ function setDestination(point,tree=null){
 }
 
 function pointIsOnLand(point){
-  const margin=.94,halfWidth=Math.sqrt(3)*HEX_RADIUS*.5*margin,maxZ=HEX_RADIUS*margin,edge=Math.sqrt(3)*HEX_RADIUS*margin;
+  const margin=1.015,halfWidth=Math.sqrt(3)*HEX_RADIUS*.5*margin,maxZ=HEX_RADIUS*margin,edge=Math.sqrt(3)*HEX_RADIUS*margin;
   for(const tile of tiles.values()){
     const local=point.clone().sub(tile.group.position),x=Math.abs(local.x),z=Math.abs(local.z);
     if(x<=halfWidth&&z<=maxZ&&x+Math.sqrt(3)*z<=edge)return true;
@@ -497,8 +496,7 @@ function updatePlayer(dt){
   player.group.rotation.y=player.yaw;player.visual.rotation.z=lerp(player.visual.rotation.z,-steer*.06,dt*5);player.visual.position.y=Math.sin(performance.now()*.012)*Math.min(Math.abs(player.speed)*.006,.022);
   audio.setEngine(clamp(Math.abs(player.speed)/maxSpeed,0,1));
   if(depot&&player.group.position.distanceTo(depot.position)<1.6)deliverCargo();
-  resources.forEach(tree=>{if(tree.active&&tree.group.getWorldPosition(new THREE.Vector3()).distanceTo(player.group.position)<1.0)harvestTree(tree)});
-  logs.slice().forEach(log=>{const d=log.mesh.position.distanceTo(player.group.position);if(d<magnetRadius()&&state.cargo.length<capacity()){log.mesh.position.lerp(player.group.position.clone().add(new THREE.Vector3(0,.65,0)),clamp(dt*(7+state.upgrades.magnet),0,1));if(d<.65)collectLog(log)}});
+  resources.forEach(tree=>{if(tree.active&&tree.group.getWorldPosition(new THREE.Vector3()).distanceTo(player.group.position)<1.0)harvestTree(tree)});  logs.slice().forEach(log=>{const d=log.mesh.position.distanceTo(player.group.position);if(d<magnetRadius()&&state.cargo.length<capacity()){log.mesh.position.lerp(player.group.position.clone().add(new THREE.Vector3(0,.65,0)),clamp(dt*(7+state.upgrades.magnet),0,1));if(d<.65)collectLog(log)}});
   player.targetRing.rotation.z+=dt*.9;state.player={x:player.group.position.x,z:player.group.position.z,yaw:player.yaw};
 }
 
