@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Castorium Map Editor v2.9</title>
-  <link rel="stylesheet" href="./editor.css?v=2.9" />
+  <title>Castorium Map Editor v2.10</title>
+  <link rel="stylesheet" href="./editor.css?v=2.10" />
 </head>
 <body>
   <div id="app">
     <header class="topbar">
-      <strong>🦫 Castorium Map Editor v2.9</strong>
+      <strong>🦫 Castorium Map Editor v2.10</strong>
       <button id="newScene">Nuevo</button>
       <button id="saveScene">Guardar</button>
       <button id="exportScene">Exportar JSON</button>
@@ -48,7 +48,7 @@
 
     <main id="viewportWrap">
       <div id="viewport"></div>
-      <div id="viewportHelp">G/R/S transformar · X/Y/Z eje (repetir = todos) · Ctrl+Z deshacer · Decals: Ctrl+D duplicar · Objetos: Shift+D duplicar · Delete borrar · F enfocar</div>
+      <div id="viewportHelp">G/R/S transformar · P repetir decal · Ctrl en R = snap 45° · X/Y/Z eje · Ctrl+Z deshacer · Decals: Ctrl+D duplica encima · Objetos: Shift+D duplicar</div>
       <div id="modeBadge">OBJETO</div>
     </main>
 
@@ -86,6 +86,6 @@
     }
   }
   </script>
-  <script type="module" src="./src/editor-v2.js?v=2.9"></script>
+  <script type="module" src="./src/editor-v2.js?v=2.10"></script>
 </body>
 </html>
