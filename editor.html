@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Castorium Map Editor v2.2</title>
+  <title>Castorium Map Editor v2.3</title>
   <link rel="stylesheet" href="./editor.css?v=2.2" />
 </head>
 <body>
   <div id="app">
     <header class="topbar">
-      <strong>🦫 Castorium Map Editor v2.2</strong>
+      <strong>🦫 Castorium Map Editor v2.3</strong>
       <button id="newScene">Nuevo</button>
       <button id="saveScene">Guardar</button>
       <button id="exportScene">Exportar JSON</button>
@@ -32,13 +32,17 @@
         <div id="layerList"></div>
       </section>
       <section>
-        <div class="section-title"><b>Piso</b></div>
-        <div class="row"><button id="floorMode">🎨 Pintar</button><button id="eraseFloor">Borrar tile</button></div>
+        <div class="section-title"><b>Piso</b><button id="copyFloorConfig" title="Copiar JSON del piso">📋</button></div>
         <label>Ancho celdas <input id="floorWidth" type="number" min="1" max="100" value="30"></label>
         <label>Alto celdas <input id="floorDepth" type="number" min="1" max="100" value="20"></label>
         <button id="resizeFloor">Aplicar tamaño</button>
-        <label class="file-button wide">Cargar tile 2D<input id="tileUpload" type="file" accept="image/*"></label>
-        <div id="tilePalette"></div>
+        <div id="floorV23"></div>
+        <details class="legacy-floor">
+          <summary>Tiles celda por celda (legacy)</summary>
+          <div class="row"><button id="floorMode">🎨 Pintar</button><button id="eraseFloor">Borrar tile</button></div>
+          <label class="file-button wide">Cargar tile 2D<input id="tileUpload" type="file" accept="image/*"></label>
+          <div id="tilePalette"></div>
+        </details>
       </section>
     </aside>
 
