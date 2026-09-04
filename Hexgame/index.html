@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#172a24">
+  <title>Castorium · Fork & Forest</title>
+  <link rel="stylesheet" href="./styles.css?v=1.0.0">
+</head>
+<body>
+  <div id="game"></div>
+
+  <header class="hud-top">
+    <div class="brand">
+      <span class="brand-mark">C</span>
+      <div><small>CASTORIUM</small><strong>Fork & Forest</strong></div>
+    </div>
+    <div class="resources" aria-label="Recursos">
+      <div class="resource wood"><span>▰</span><div><small>MADERA</small><b id="woodValue">0</b></div></div>
+      <div class="resource stars"><span>✦</span><div><small>ESTRELLAS</small><b id="starValue">0</b></div></div>
+      <div class="resource level"><span>♜</span><div><small>RANGO</small><b id="levelValue">1</b></div></div>
+    </div>
+    <div class="shift-card">
+      <small id="shiftLabel">TURNO 1</small>
+      <div class="shift-time"><span id="shiftTime">01:00</span><i id="shiftBar"></i></div>
+    </div>
+  </header>
+
+  <aside class="mission-card">
+    <small>RUTA ACTIVA</small>
+    <strong id="missionTitle">La primera carga</strong>
+    <p id="missionText">Llevá 3 troncos al aserradero.</p>
+    <div class="progress"><i id="missionBar"></i></div>
+    <span id="missionCount">0 / 3</span>
+  </aside>
+
+  <aside class="controls-card">
+    <button id="autoButton" class="mini locked" type="button" aria-label="Piloto automático">AUTO <span>🔒</span></button>
+    <button id="soundButton" class="mini" type="button" aria-label="Sonido">SONIDO <span>♪</span></button>
+    <button id="shopButton" class="mini" type="button" aria-label="Abrir taller">TALLER <span>⌁</span></button>
+  </aside>
+
+  <div class="cargo-card">
+    <div class="cargo-copy"><small>CARGA</small><b id="cargoValue">0 / 2</b></div>
+    <div id="cargoSlots" class="cargo-slots"></div>
+  </div>
+
+  <div id="combo" class="combo" aria-live="polite"><small>RACHA</small><b>x1</b><i></i></div>
+  <div id="powerupBanner" class="powerup-banner"><span>⚡</span><div><small>POWER-UP</small><b id="powerupName">TURBO MIEL</b></div><i id="powerupTimer"></i></div>
+
+  <div class="input-hint" id="inputHint"><span>CLICK / TOQUE</span> para conducir · <span>WASD</span> para maniobrar</div>
+
+  <section id="shop" class="modal" aria-hidden="true">
+    <div class="modal-card shop-card">
+      <div class="sunset-orb"></div>
+      <small class="modal-kicker" id="shopKicker">ATARDECER · TALLER DEL DIQUE</small>
+      <h2 id="shopTitle">Una mejora antes del próximo turno</h2>
+      <p id="shopSubtitle">Elegí con calma. El bosque sigue creciendo.</p>
+      <div id="upgradeGrid" class="upgrade-grid"></div>
+      <div class="shop-footer">
+        <div><small>PRÓXIMA EXPANSIÓN</small><strong id="nextExpansion">35 madera</strong></div>
+        <button id="continueButton" class="primary" type="button">Siguiente turno <span>→</span></button>
+      </div>
+    </div>
+  </section>
+
+  <section id="welcome" class="modal visible" aria-hidden="false">
+    <div class="modal-card welcome-card">
+      <div class="logo-beaver" aria-label="Castor">C</div>
+      <small class="modal-kicker">UN JUEGO DE BOSQUES, RUEDAS Y BUENAS IDEAS</small>
+      <h1>Fork <em>&</em> Forest</h1>
+      <p>Recolectá. Mejorá. Expandí el territorio hexágono por hexágono.</p>
+      <div class="loop-preview">
+        <div><span>▲</span><small>BUSCÁ</small></div><i>→</i>
+        <div><span>╫</span><small>CARGÁ</small></div><i>→</i>
+        <div><span>▰</span><small>ENTREGÁ</small></div><i>→</i>
+        <div><span>⬡</span><small>EXPANDÍ</small></div>
+      </div>
+      <button id="startButton" class="primary big" type="button">Encender el autoelevador</button>
+      <button id="continueSaveButton" class="text-button" type="button" hidden>Continuar partida guardada</button>
+    </div>
+  </section>
+
+  <div id="toastLayer" class="toast-layer" aria-live="polite"></div>
+  <div id="loading" class="loading-screen"><div class="loader-hex">⬡</div><strong>Preparando el bosque…</strong><small id="loadingDetail">Plantando pinos</small></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="./game.js?v=1.0.9"></script>
+</body>
+</html>
+
