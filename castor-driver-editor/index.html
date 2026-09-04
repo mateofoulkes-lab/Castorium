@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Castorium · Ajuste del conductor</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">CASTORIUM / UTILIDAD 3D</p>
+        <h1>Ajuste del conductor</h1>
+      </div>
+      <div class="topbar-actions">
+        <span id="assetStatus" class="status loading">Cargando modelos…</span>
+        <button id="focusAll" type="button">Encuadrar escena</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="viewport-panel" aria-label="Vista 3D">
+        <div id="viewport"></div>
+        <div class="viewport-toolbar" role="toolbar" aria-label="Herramientas de transformación">
+          <button class="tool active" data-mode="translate" type="button"><kbd>G</kbd> Mover</button>
+          <button class="tool" data-mode="rotate" type="button"><kbd>R</kbd> Rotar</button>
+          <button class="tool" data-mode="scale" type="button"><kbd>S</kbd> Escalar</button>
+          <span class="divider"></span>
+          <button id="toggleGrid" class="tool active" type="button">Grilla</button>
+          <button id="toggleSkeleton" class="tool" type="button">Esqueleto</button>
+        </div>
+        <div class="viewport-hint">Arrastrá el gizmo para ajustar el castor · orbitá con el mouse · rueda para zoom</div>
+      </section>
+
+      <aside class="inspector">
+        <section class="panel intro">
+          <div class="panel-title">
+            <div><span class="step">01</span><h2>Archivos</h2></div>
+          </div>
+          <div class="asset-list">
+            <div class="asset-row"><span class="dot yale"></span><div><strong>Autoelevador Yale</strong><small>../models/yale.glb</small></div></div>
+            <div class="asset-row"><span class="dot castor"></span><div><strong>Castor v2</strong><small>../models/castorv2.glb</small></div></div>
+            <div class="asset-row"><span class="dot animation"></span><div><strong>Animación Driving</strong><small>../anim/Driving.fbx</small></div></div>
+          </div>
+          <label class="file-button">Cargar Driving.fbx manualmente<input id="animationFile" type="file" accept=".fbx"></label>
+          <p id="animationMessage" class="note">El editor intentará cargar el FBX del repositorio automáticamente.</p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title"><div><span class="step">02</span><h2>Transformación</h2></div><button id="resetTransform" class="ghost" type="button">Restablecer</button></div>
+          <div class="transform-block">
+            <span class="axis-label">Posición</span>
+            <div class="vector-inputs" data-vector="position">
+              <label><b class="x">X</b><input data-axis="x" type="number" step="0.01"></label>
+              <label><b class="y">Y</b><input data-axis="y" type="number" step="0.01"></label>
+              <label><b class="z">Z</b><input data-axis="z" type="number" step="0.01"></label>
+            </div>
+          </div>
+          <div class="transform-block">
+            <span class="axis-label">Rotación (grados)</span>
+            <div class="vector-inputs" data-vector="rotation">
+              <label><b class="x">X</b><input data-axis="x" type="number" step="1"></label>
+              <label><b class="y">Y</b><input data-axis="y" type="number" step="1"></label>
+              <label><b class="z">Z</b><input data-axis="z" type="number" step="1"></label>
+            </div>
+          </div>
+          <div class="transform-block">
+            <div class="axis-heading"><span class="axis-label">Escala</span><label class="lock"><input id="lockScale" type="checkbox" checked> uniforme</label></div>
+            <div class="vector-inputs" data-vector="scale">
+              <label><b class="x">X</b><input data-axis="x" type="number" min="0.001" step="0.01"></label>
+              <label><b class="y">Y</b><input data-axis="y" type="number" min="0.001" step="0.01"></label>
+              <label><b class="z">Z</b><input data-axis="z" type="number" min="0.001" step="0.01"></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title"><div><span class="step">03</span><h2>Animación</h2></div><span id="clipName" class="pill">Sin clip</span></div>
+          <div class="animation-controls">
+            <button id="playPause" class="primary" type="button" disabled>▶ Reproducir</button>
+            <label>Velocidad <input id="animationSpeed" type="number" value="1" min="0.05" max="4" step="0.05"></label>
+          </div>
+          <input id="animationTime" class="timeline" type="range" min="0" max="1" value="0" step="0.001" disabled>
+          <div class="timeline-labels"><span id="currentTime">0.00 s</span><span id="duration">0.00 s</span></div>
+        </section>
+
+        <section class="panel output-panel">
+          <div class="panel-title"><div><span class="step">04</span><h2>Texto para pegar</h2></div></div>
+          <p class="note">Cuando quede bien, copiá este bloque y pegalo en el chat.</p>
+          <textarea id="outputText" readonly spellcheck="false"></textarea>
+          <button id="copyOutput" class="primary wide" type="button">Copiar configuración</button>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
+
