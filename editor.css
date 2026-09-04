@@ -8,3 +8,5 @@
 .decal-card.editing{outline:2px solid #69c9ff;background:#182631}.decal-card>#decalEditBtn{width:100%;margin:4px 0 7px}.decal-card>#decalEditBtn.active{outline:2px solid #69c9ff}.decal-selected-panel .row button{flex:1}
 
 .decal-library-item .asset-name{display:flex;flex-direction:column;gap:2px}.decal-library-item .asset-name small{font-size:9px;opacity:.65}.decal-lib-delete{margin-left:auto;flex:0 0 auto}
+
+.decal-repeat-pad{display:grid;grid-template-columns:repeat(3,34px);justify-content:center;gap:4px;margin:7px 0}.decal-repeat-pad button{margin:0!important;padding:5px}.decal-selected-panel>#decalRepeatBtn{width:100%;margin-top:7px}.decal-selected-panel>#decalRepeatBtn.active{outline:2px solid #69c9ff}
