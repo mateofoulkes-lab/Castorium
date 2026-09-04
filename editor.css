@@ -2,3 +2,5 @@
 .floor-layer-card{border:1px solid #3e4852;border-radius:6px;padding:7px;margin:8px 0;background:#1a2026}.floor-layer-card>b{display:block;margin-bottom:5px;font-size:12px;color:#c8d9e8}.floor-layer-card small{display:block;margin:4px 0}.floor-layer-card input[type=number]{width:58px}.decal-library-item{cursor:grab}.decal-library-item.selected{outline:2px solid #ffd54a;background:#3a3524}.decal-selected-panel{margin-top:7px;padding-top:7px;border-top:1px solid #46515d}.decal-selected-panel button{margin-top:6px}.legacy-floor{margin-top:8px;font-size:11px;opacity:.8}.legacy-floor summary{cursor:pointer;color:#9fb4c6}.character-animation-list{margin-top:6px}
 
 .reference-card input[type=range]{width:100%;max-width:140px}.reference-card label span{min-width:34px;text-align:right}.reference-card{border-color:#596776;background:#1b232b}
+
+.reference-card.editing{outline:2px solid #ffd54a;background:#25271d}.reference-actions button{flex:1}.reference-card .reference-actions{gap:4px}.reference-card .reference-actions button.active{outline:2px solid #ffd54a}
